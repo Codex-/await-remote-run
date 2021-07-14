@@ -1,28 +1,29 @@
 {
-  "name": "typescript-action",
+  "name": "await-remote-action",
   "version": "0.0.0",
   "private": true,
-  "description": "TypeScript template action",
-  "main": "lib/main.js",
+  "description": "Await the result of a remote repository action.",
+  "main": "dist/main.js",
   "scripts": {
     "build": "tsc",
-    "format": "prettier --write **/*.ts",
-    "format-check": "prettier --check **/*.ts",
+    "format:check": "prettier --check **/*.ts",
+    "format:write": "npm run format:check -- --write",
     "lint": "eslint src/**/*.ts",
     "package": "ncc build --source-map --license licenses.txt",
+    "style": "npm run lint && npm run format:check",
     "test": "jest",
-    "all": "npm run build && npm run format && npm run lint && npm run package && npm test"
+    "all": "npm run build && npm run style && npm run package && npm test"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/actions/typescript-action.git"
+    "url": "git+https://github.com/Codex-/await-remote-action.git"
   },
   "keywords": [
     "actions",
     "node",
     "setup"
   ],
-  "author": "",
+  "author": "Alex Miller",
   "license": "MIT",
   "dependencies": {
     "@actions/core": "^1.4.0"
