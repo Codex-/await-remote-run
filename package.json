@@ -1,18 +1,17 @@
 {
-  "name": "await-remote-action",
+  "name": "await-remote-run",
   "version": "0.0.0",
   "private": true,
-  "description": "Await the result of a remote repository action.",
-  "main": "dist/main.js",
+  "description": "Await the result of a remote repository run.",
+  "main": "lib/main.js",
   "scripts": {
     "build": "tsc",
     "format:check": "prettier --check **/*.ts",
     "format:write": "npm run format:check -- --write",
     "lint": "eslint src/**/*.ts",
-    "package": "ncc build --source-map --license licenses.txt",
+    "package": "npm run build && ncc build --source-map",
     "style": "npm run lint && npm run format:check",
-    "test": "jest",
-    "all": "npm run build && npm run style && npm run package && npm test"
+    "test": "jest"
   },
   "repository": {
     "type": "git",
@@ -26,24 +25,26 @@
   "author": "Alex Miller",
   "license": "MIT",
   "dependencies": {
-    "@actions/core": "^1.4.0"
+    "@actions/core": "^1.4.0",
+    "@actions/github": "^5.0.0"
   },
   "devDependencies": {
-    "@types/jest": "^26.0.24",
-    "@types/node": "^16.3.2",
-    "@typescript-eslint/parser": "^4.28.3",
-    "@vercel/ncc": "^0.28.6",
-    "eslint": "^7.30.0",
+    "@types/jest": "^27.0.1",
+    "@types/node": "^16.6.1",
+    "@types/uuid": "^8.3.1",
+    "@typescript-eslint/parser": "^4.29.1",
+    "@vercel/ncc": "^0.29.1",
+    "eslint": "^7.32.0",
     "eslint-config-airbnb-typescript": "^12.3.1",
     "eslint-config-prettier": "^8.3.0",
-    "eslint-plugin-github": "^4.1.3",
-    "eslint-plugin-import": "^2.23.4",
-    "eslint-plugin-jest": "^24.3.6",
+    "eslint-plugin-github": "^4.2.0",
+    "eslint-plugin-import": "^2.24.0",
+    "eslint-plugin-jest": "^24.4.0",
     "jest": "^27.0.6",
     "jest-circus": "^27.0.6",
     "js-yaml": "^4.1.0",
     "prettier": "2.3.2",
-    "ts-jest": "^27.0.3",
+    "ts-jest": "^27.0.4",
     "typescript": "^4.3.5"
   }
 }
