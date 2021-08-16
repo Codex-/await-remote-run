@@ -1,11 +1,28 @@
-name: 'Your name here'
-description: 'Provide a description here'
-author: 'Your name or organization here'
+name: "Await Remote Run"
+description: "Await a remote repository run to complete, returning a result."
+author: "Alex Miller"
+branding:
+  icon: "shield"
+  color: "purple"
 inputs:
-  milliseconds: # change this
+  token:
+    description: "GitHub Personal Access Token for making API requests."
     required: true
-    description: 'input description here'
-    default: 'default value if applicable'
+  repo:
+    description: "Repository of the action to dispatch."
+    required: true
+  owner:
+    description: "Owner of the given repository."
+    required: true
+  run_id:
+    description: "Run ID to await the completion of."
+    required: true
+  run_timeout_seconds:
+    description: "Time until giving up on the run."
+    default: 300
+  poll_interval_ms:
+    description: "Frequency to poll the run for a status."
+    default: 5000
 runs:
-  using: 'node12'
-  main: 'dist/index.js'
+  using: "node12"
+  main: "dist/index.js"
