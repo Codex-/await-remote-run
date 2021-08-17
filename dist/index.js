@@ -192,7 +192,6 @@ async function run() {
         while (elapsedTime < timeoutMs) {
             attemptNo++;
             elapsedTime = Date.now() - startTime;
-            core.info(`Exhausted searching IDs in known runs, attempt ${attemptNo}...`);
             const { status, conclusion } = await api_1.getWorkflowRunState(config.runId);
             if (status === api_1.WorkflowRunStatus.Completed) {
                 switch (conclusion) {
@@ -211,9 +210,10 @@ async function run() {
                         return;
                 }
             }
+            core.debug(`Run has not concluded, attempt ${attemptNo}...`);
             await new Promise((resolve) => setTimeout(resolve, config.pollIntervalMs));
         }
-        throw new Error("Timeout exceeded while attempting to get Run ID");
+        throw new Error(`Timeout exceeded while awaiting completion of Run ${config.runId}`);
     }
     catch (error) {
         core.error(`Failed to complete: ${error.message}`);

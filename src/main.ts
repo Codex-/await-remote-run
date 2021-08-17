@@ -21,10 +21,6 @@ async function run(): Promise<void> {
       attemptNo++;
       elapsedTime = Date.now() - startTime;
 
-      core.info(
-        `Exhausted searching IDs in known runs, attempt ${attemptNo}...`
-      );
-
       const { status, conclusion } = await getWorkflowRunState(config.runId);
 
       if (status === WorkflowRunStatus.Completed) {
@@ -45,12 +41,16 @@ async function run(): Promise<void> {
         }
       }
 
+      core.debug(`Run has not concluded, attempt ${attemptNo}...`);
+
       await new Promise((resolve) =>
         setTimeout(resolve, config.pollIntervalMs)
       );
     }
 
-    throw new Error("Timeout exceeded while attempting to get Run ID");
+    throw new Error(
+      `Timeout exceeded while awaiting completion of Run ${config.runId}`
+    );
   } catch (error) {
     core.error(`Failed to complete: ${error.message}`);
     core.warning("Does the token have the correct permissions?");
