@@ -93,7 +93,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.getWorkflowRunState = exports.init = exports.WorkflowRunConclusion = exports.WorkflowRunStatus = void 0;
+exports.getWorkflowRunFailedJobs = exports.getWorkflowRunState = exports.init = exports.WorkflowRunConclusion = exports.WorkflowRunStatus = void 0;
 const core = __importStar(__nccwpck_require__(186));
 const github = __importStar(__nccwpck_require__(438));
 const action_1 = __nccwpck_require__(139);
@@ -148,6 +148,61 @@ async function getWorkflowRunState(runId) {
     }
 }
 exports.getWorkflowRunState = getWorkflowRunState;
+async function getWorkflowRunFailedJobs(runId) {
+    try {
+        // https://docs.github.com/en/rest/reference/actions#list-jobs-for-a-workflow-run
+        const response = await octokit.rest.actions.listJobsForWorkflowRun({
+            owner: config.owner,
+            repo: config.repo,
+            run_id: runId,
+            filter: "latest",
+        });
+        if (response.status !== 200) {
+            throw new Error(`Failed to get Jobs for Workflow Run, expected 200 but received ${response.status}`);
+        }
+        const fetchedFailedJobs = response.data.jobs.filter((job) => job.conclusion === "failure");
+        if (fetchedFailedJobs.length <= 0) {
+            core.warning(`Failed to find failed Jobs for Workflow Run ${runId}`);
+            return [];
+        }
+        const jobs = fetchedFailedJobs.map((job) => {
+            var _a;
+            const steps = (_a = job.steps) === null || _a === void 0 ? void 0 : _a.map((step) => ({
+                name: step.name,
+                status: step.status,
+                conclusion: step.conclusion,
+                number: step.number,
+            }));
+            return {
+                id: job.id,
+                name: job.name,
+                status: job.status,
+                conclusion: job.conclusion,
+                steps: steps || [],
+                url: job.html_url,
+            };
+        });
+        core.debug(`Fetched Jobs for Run:\n` +
+            `  Repository: ${config.owner}/${config.repo}\n` +
+            `  Run ID: ${config.runId}\n` +
+            `  Jobs: [${jobs.map((job) => job.name)}]`);
+        for (const job of jobs) {
+            const steps = job.steps.map((step) => `${step.number}: ${step.name}`);
+            core.debug(`  Job: ${job.name}\n` +
+                `    ID: ${job.id}\n` +
+                `    Status: ${job.status}\n` +
+                `    Conclusion: ${job.conclusion}\n` +
+                `    Steps: [${steps}]`);
+        }
+        return jobs;
+    }
+    catch (error) {
+        core.error(`getWorkflowRunJobFailures: An unexpected error has occurred: ${error.message}`);
+        error.stack && core.debug(error.stack);
+        throw error;
+    }
+}
+exports.getWorkflowRunFailedJobs = getWorkflowRunFailedJobs;
 
 
 /***/ }),
@@ -180,6 +235,26 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 const core = __importStar(__nccwpck_require__(186));
 const action_1 = __nccwpck_require__(139);
 const api_1 = __nccwpck_require__(947);
+async function logFailureDetails(runId) {
+    const failedJobs = await api_1.getWorkflowRunFailedJobs(runId);
+    for (const failedJob of failedJobs) {
+        const failedSteps = failedJob.steps
+            .filter((step) => step.conclusion !== "success")
+            .map((step) => {
+            return (`    ${step.number}: ${step.name}\n` +
+                `      Status: ${step.status}\n` +
+                `      Conclusion: ${step.conclusion}`);
+        })
+            .join("\n");
+        core.error(`Job ${failedJob.name}:\n` +
+            `  ID: ${failedJob.id}\n` +
+            `  Status: ${failedJob.status}\n` +
+            `  Conclusion: ${failedJob.conclusion}\n` +
+            `  URL: ${failedJob.url}\n` +
+            `  Steps (non-success):\n` +
+            failedSteps);
+    }
+}
 async function run() {
     try {
         const config = action_1.getConfig();
@@ -203,6 +278,8 @@ async function run() {
                     case api_1.WorkflowRunConclusion.Neutral:
                     case api_1.WorkflowRunConclusion.Skipped:
                     case api_1.WorkflowRunConclusion.TimedOut:
+                        core.error(`Run has failed with conclusion: ${conclusion}`);
+                        await logFailureDetails(config.runId);
                         core.setFailed(conclusion);
                         return;
                     default:
@@ -360,7 +437,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.getState = exports.saveState = exports.group = exports.endGroup = exports.startGroup = exports.info = exports.warning = exports.error = exports.debug = exports.isDebug = exports.setFailed = exports.setCommandEcho = exports.setOutput = exports.getBooleanInput = exports.getMultilineInput = exports.getInput = exports.addPath = exports.setSecret = exports.exportVariable = exports.ExitCode = void 0;
+exports.getState = exports.saveState = exports.group = exports.endGroup = exports.startGroup = exports.info = exports.notice = exports.warning = exports.error = exports.debug = exports.isDebug = exports.setFailed = exports.setCommandEcho = exports.setOutput = exports.getBooleanInput = exports.getMultilineInput = exports.getInput = exports.addPath = exports.setSecret = exports.exportVariable = exports.ExitCode = void 0;
 const command_1 = __nccwpck_require__(351);
 const file_command_1 = __nccwpck_require__(717);
 const utils_1 = __nccwpck_require__(278);
@@ -538,19 +615,30 @@ exports.debug = debug;
 /**
  * Adds an error issue
  * @param message error issue message. Errors will be converted to string via toString()
+ * @param properties optional properties to add to the annotation.
  */
-function error(message) {
-    command_1.issue('error', message instanceof Error ? message.toString() : message);
+function error(message, properties = {}) {
+    command_1.issueCommand('error', utils_1.toCommandProperties(properties), message instanceof Error ? message.toString() : message);
 }
 exports.error = error;
 /**
- * Adds an warning issue
+ * Adds a warning issue
  * @param message warning issue message. Errors will be converted to string via toString()
+ * @param properties optional properties to add to the annotation.
  */
-function warning(message) {
-    command_1.issue('warning', message instanceof Error ? message.toString() : message);
+function warning(message, properties = {}) {
+    command_1.issueCommand('warning', utils_1.toCommandProperties(properties), message instanceof Error ? message.toString() : message);
 }
 exports.warning = warning;
+/**
+ * Adds a notice issue
+ * @param message notice issue message. Errors will be converted to string via toString()
+ * @param properties optional properties to add to the annotation.
+ */
+function notice(message, properties = {}) {
+    command_1.issueCommand('notice', utils_1.toCommandProperties(properties), message instanceof Error ? message.toString() : message);
+}
+exports.notice = notice;
 /**
  * Writes info to log with console.log.
  * @param message info message
@@ -684,7 +772,7 @@ exports.issueCommand = issueCommand;
 // We use any as a valid input type
 /* eslint-disable @typescript-eslint/no-explicit-any */
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.toCommandValue = void 0;
+exports.toCommandProperties = exports.toCommandValue = void 0;
 /**
  * Sanitizes an input into a string so it can be passed into issueCommand safely
  * @param input input to sanitize into a string
@@ -699,6 +787,25 @@ function toCommandValue(input) {
     return JSON.stringify(input);
 }
 exports.toCommandValue = toCommandValue;
+/**
+ *
+ * @param annotationProperties
+ * @returns The command properties to send with the actual annotation command
+ * See IssueCommandProperties: https://github.com/actions/runner/blob/main/src/Runner.Worker/ActionCommandManager.cs#L646
+ */
+function toCommandProperties(annotationProperties) {
+    if (!Object.keys(annotationProperties).length) {
+        return {};
+    }
+    return {
+        title: annotationProperties.title,
+        line: annotationProperties.startLine,
+        endLine: annotationProperties.endLine,
+        col: annotationProperties.startColumn,
+        endColumn: annotationProperties.endColumn
+    };
+}
+exports.toCommandProperties = toCommandProperties;
 //# sourceMappingURL=utils.js.map
 
 /***/ }),

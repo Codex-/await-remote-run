@@ -1,11 +1,37 @@
 import * as core from "@actions/core";
 import { getConfig } from "./action";
 import {
+  getWorkflowRunFailedJobs,
   getWorkflowRunState,
   init,
   WorkflowRunConclusion,
   WorkflowRunStatus,
 } from "./api";
+
+async function logFailureDetails(runId: number): Promise<void> {
+  const failedJobs = await getWorkflowRunFailedJobs(runId);
+  for (const failedJob of failedJobs) {
+    const failedSteps = failedJob.steps
+      .filter((step) => step.conclusion !== "success")
+      .map((step) => {
+        return (
+          `    ${step.number}: ${step.name}\n` +
+          `      Status: ${step.status}\n` +
+          `      Conclusion: ${step.conclusion}`
+        );
+      })
+      .join("\n");
+    core.error(
+      `Job ${failedJob.name}:\n` +
+        `  ID: ${failedJob.id}\n` +
+        `  Status: ${failedJob.status}\n` +
+        `  Conclusion: ${failedJob.conclusion}\n` +
+        `  URL: ${failedJob.url}\n` +
+        `  Steps (non-success):\n` +
+        failedSteps
+    );
+  }
+}
 
 async function run(): Promise<void> {
   try {
@@ -33,6 +59,8 @@ async function run(): Promise<void> {
           case WorkflowRunConclusion.Neutral:
           case WorkflowRunConclusion.Skipped:
           case WorkflowRunConclusion.TimedOut:
+            core.error(`Run has failed with conclusion: ${conclusion}`);
+            await logFailureDetails(config.runId);
             core.setFailed(conclusion);
             return;
           default:

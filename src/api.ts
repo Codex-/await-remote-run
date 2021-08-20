@@ -24,14 +24,14 @@ export enum WorkflowRunConclusion {
   ActionRequired = "action_required",
 }
 
-export interface WorkflowRunState {
-  status: WorkflowRunStatus | null;
-  conclusion: WorkflowRunConclusion | null;
-}
-
 export function init(cfg?: ActionConfig): void {
   config = cfg || getConfig();
   octokit = github.getOctokit(config.token);
+}
+
+export interface WorkflowRunState {
+  status: WorkflowRunStatus | null;
+  conclusion: WorkflowRunConclusion | null;
 }
 
 export async function getWorkflowRunState(
@@ -66,6 +66,95 @@ export async function getWorkflowRunState(
   } catch (error) {
     core.error(
       `getWorkflowRunState: An unexpected error has occurred: ${error.message}`
+    );
+    error.stack && core.debug(error.stack);
+    throw error;
+  }
+}
+
+export interface WorkflowRunJob {
+  id: number;
+  name: string;
+  status: "queued" | "in_progress" | "completed";
+  conclusion: string | null;
+  steps: WorkflowRunJobStep[];
+  url: string | null;
+}
+
+export interface WorkflowRunJobStep {
+  name: string;
+  status: string;
+  conclusion: string | null;
+  number: number;
+}
+
+export async function getWorkflowRunFailedJobs(
+  runId: number
+): Promise<WorkflowRunJob[]> {
+  try {
+    // https://docs.github.com/en/rest/reference/actions#list-jobs-for-a-workflow-run
+    const response = await octokit.rest.actions.listJobsForWorkflowRun({
+      owner: config.owner,
+      repo: config.repo,
+      run_id: runId,
+      filter: "latest",
+    });
+
+    if (response.status !== 200) {
+      throw new Error(
+        `Failed to get Jobs for Workflow Run, expected 200 but received ${response.status}`
+      );
+    }
+
+    const fetchedFailedJobs = response.data.jobs.filter(
+      (job) => job.conclusion === "failure"
+    );
+
+    if (fetchedFailedJobs.length <= 0) {
+      core.warning(`Failed to find failed Jobs for Workflow Run ${runId}`);
+      return [];
+    }
+
+    const jobs: WorkflowRunJob[] = fetchedFailedJobs.map((job) => {
+      const steps = job.steps?.map((step) => ({
+        name: step.name,
+        status: step.status,
+        conclusion: step.conclusion,
+        number: step.number,
+      }));
+
+      return {
+        id: job.id,
+        name: job.name,
+        status: job.status,
+        conclusion: job.conclusion,
+        steps: steps || [],
+        url: job.html_url,
+      };
+    });
+
+    core.debug(
+      `Fetched Jobs for Run:\n` +
+        `  Repository: ${config.owner}/${config.repo}\n` +
+        `  Run ID: ${config.runId}\n` +
+        `  Jobs: [${jobs.map((job) => job.name)}]`
+    );
+
+    for (const job of jobs) {
+      const steps = job.steps.map((step) => `${step.number}: ${step.name}`);
+      core.debug(
+        `  Job: ${job.name}\n` +
+          `    ID: ${job.id}\n` +
+          `    Status: ${job.status}\n` +
+          `    Conclusion: ${job.conclusion}\n` +
+          `    Steps: [${steps}]`
+      );
+    }
+
+    return jobs;
+  } catch (error) {
+    core.error(
+      `getWorkflowRunJobFailures: An unexpected error has occurred: ${error.message}`
     );
     error.stack && core.debug(error.stack);
     throw error;
