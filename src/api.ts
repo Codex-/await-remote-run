@@ -88,24 +88,36 @@ export interface WorkflowRunJobStep {
   number: number;
 }
 
+type Awaited<T> = T extends PromiseLike<infer U> ? Awaited<U> : T;
+type ListJobsForWorkflowRunResponse = Awaited<
+  ReturnType<Octokit["rest"]["actions"]["listJobsForWorkflowRun"]>
+>;
+
+async function getWorkflowRunJobs(
+  runId: number
+): Promise<ListJobsForWorkflowRunResponse> {
+  // https://docs.github.com/en/rest/reference/actions#list-jobs-for-a-workflow-run
+  const response = await octokit.rest.actions.listJobsForWorkflowRun({
+    owner: config.owner,
+    repo: config.repo,
+    run_id: runId,
+    filter: "latest",
+  });
+
+  if (response.status !== 200) {
+    throw new Error(
+      `Failed to get Jobs for Workflow Run, expected 200 but received ${response.status}`
+    );
+  }
+
+  return response;
+}
+
 export async function getWorkflowRunFailedJobs(
   runId: number
 ): Promise<WorkflowRunJob[]> {
   try {
-    // https://docs.github.com/en/rest/reference/actions#list-jobs-for-a-workflow-run
-    const response = await octokit.rest.actions.listJobsForWorkflowRun({
-      owner: config.owner,
-      repo: config.repo,
-      run_id: runId,
-      filter: "latest",
-    });
-
-    if (response.status !== 200) {
-      throw new Error(
-        `Failed to get Jobs for Workflow Run, expected 200 but received ${response.status}`
-      );
-    }
-
+    const response = await getWorkflowRunJobs(runId);
     const fetchedFailedJobs = response.data.jobs.filter(
       (job) => job.conclusion === "failure"
     );
@@ -155,6 +167,41 @@ export async function getWorkflowRunFailedJobs(
   } catch (error) {
     core.error(
       `getWorkflowRunJobFailures: An unexpected error has occurred: ${error.message}`
+    );
+    error.stack && core.debug(error.stack);
+    throw error;
+  }
+}
+
+export async function getWorkflowRunActiveJobUrl(
+  runId: number
+): Promise<string> {
+  try {
+    const response = await getWorkflowRunJobs(runId);
+    const fetchedInProgressJobs = response.data.jobs.filter(
+      (job) => job.status === "in_progress"
+    );
+
+    if (fetchedInProgressJobs.length <= 0) {
+      core.warning(`Failed to find in_progress Jobs for Workflow Run ${runId}`);
+      return "Unable to fetch URL";
+    }
+
+    core.debug(
+      `Fetched Jobs for Run:\n` +
+        `  Repository: ${config.owner}/${config.repo}\n` +
+        `  Run ID: ${config.runId}\n` +
+        `  Jobs (in_progress): [${fetchedInProgressJobs.map(
+          (job) => job.name
+        )}]`
+    );
+
+    return (
+      fetchedInProgressJobs[0].html_url || "GitHub failed to return the URL"
+    );
+  } catch (error) {
+    core.error(
+      `getWorkflowRunActiveJobUrl: An unexpected error has occurred: ${error.message}`
     );
     error.stack && core.debug(error.stack);
     throw error;

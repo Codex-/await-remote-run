@@ -1,6 +1,7 @@
 import * as core from "@actions/core";
 import { getConfig } from "./action";
 import {
+  getWorkflowRunActiveJobUrl,
   getWorkflowRunFailedJobs,
   getWorkflowRunState,
   init,
@@ -42,7 +43,13 @@ async function run(): Promise<void> {
     const timeoutMs = config.runTimeoutSeconds * 1000;
     let attemptNo = 0;
     let elapsedTime = Date.now() - startTime;
-    core.info(`Awaiting completion of Workflow Run ${config.runId}...`);
+
+    core.info(
+      `Awaiting completion of Workflow Run ${config.runId}...\n` +
+        `  ID: ${config.runId}\n` +
+        `  URL: ${await getWorkflowRunActiveJobUrl(config.runId)}`
+    );
+
     while (elapsedTime < timeoutMs) {
       attemptNo++;
       elapsedTime = Date.now() - startTime;
@@ -81,7 +88,9 @@ async function run(): Promise<void> {
     );
   } catch (error) {
     core.error(`Failed to complete: ${error.message}`);
-    core.warning("Does the token have the correct permissions?");
+    if (error instanceof Error && !error.message.includes("Timeout")) {
+      core.warning("Does the token have the correct permissions?");
+    }
     error.stack && core.debug(error.stack);
     core.setFailed(error.message);
   }

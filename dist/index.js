@@ -93,7 +93,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.getWorkflowRunFailedJobs = exports.getWorkflowRunState = exports.init = exports.WorkflowRunConclusion = exports.WorkflowRunStatus = void 0;
+exports.getWorkflowRunActiveJobUrl = exports.getWorkflowRunFailedJobs = exports.getWorkflowRunState = exports.init = exports.WorkflowRunConclusion = exports.WorkflowRunStatus = void 0;
 const core = __importStar(__nccwpck_require__(186));
 const github = __importStar(__nccwpck_require__(438));
 const action_1 = __nccwpck_require__(139);
@@ -148,18 +148,22 @@ async function getWorkflowRunState(runId) {
     }
 }
 exports.getWorkflowRunState = getWorkflowRunState;
+async function getWorkflowRunJobs(runId) {
+    // https://docs.github.com/en/rest/reference/actions#list-jobs-for-a-workflow-run
+    const response = await octokit.rest.actions.listJobsForWorkflowRun({
+        owner: config.owner,
+        repo: config.repo,
+        run_id: runId,
+        filter: "latest",
+    });
+    if (response.status !== 200) {
+        throw new Error(`Failed to get Jobs for Workflow Run, expected 200 but received ${response.status}`);
+    }
+    return response;
+}
 async function getWorkflowRunFailedJobs(runId) {
     try {
-        // https://docs.github.com/en/rest/reference/actions#list-jobs-for-a-workflow-run
-        const response = await octokit.rest.actions.listJobsForWorkflowRun({
-            owner: config.owner,
-            repo: config.repo,
-            run_id: runId,
-            filter: "latest",
-        });
-        if (response.status !== 200) {
-            throw new Error(`Failed to get Jobs for Workflow Run, expected 200 but received ${response.status}`);
-        }
+        const response = await getWorkflowRunJobs(runId);
         const fetchedFailedJobs = response.data.jobs.filter((job) => job.conclusion === "failure");
         if (fetchedFailedJobs.length <= 0) {
             core.warning(`Failed to find failed Jobs for Workflow Run ${runId}`);
@@ -203,6 +207,27 @@ async function getWorkflowRunFailedJobs(runId) {
     }
 }
 exports.getWorkflowRunFailedJobs = getWorkflowRunFailedJobs;
+async function getWorkflowRunActiveJobUrl(runId) {
+    try {
+        const response = await getWorkflowRunJobs(runId);
+        const fetchedInProgressJobs = response.data.jobs.filter((job) => job.status === "in_progress");
+        if (fetchedInProgressJobs.length <= 0) {
+            core.warning(`Failed to find in_progress Jobs for Workflow Run ${runId}`);
+            return "Unable to fetch URL";
+        }
+        core.debug(`Fetched Jobs for Run:\n` +
+            `  Repository: ${config.owner}/${config.repo}\n` +
+            `  Run ID: ${config.runId}\n` +
+            `  Jobs (in_progress): [${fetchedInProgressJobs.map((job) => job.name)}]`);
+        return (fetchedInProgressJobs[0].html_url || "GitHub failed to return the URL");
+    }
+    catch (error) {
+        core.error(`getWorkflowRunActiveJobUrl: An unexpected error has occurred: ${error.message}`);
+        error.stack && core.debug(error.stack);
+        throw error;
+    }
+}
+exports.getWorkflowRunActiveJobUrl = getWorkflowRunActiveJobUrl;
 
 
 /***/ }),
@@ -263,7 +288,9 @@ async function run() {
         const timeoutMs = config.runTimeoutSeconds * 1000;
         let attemptNo = 0;
         let elapsedTime = Date.now() - startTime;
-        core.info(`Awaiting completion of Workflow Run ${config.runId}...`);
+        core.info(`Awaiting completion of Workflow Run ${config.runId}...\n` +
+            `  ID: ${config.runId}\n` +
+            `  URL: ${await api_1.getWorkflowRunActiveJobUrl(config.runId)}`);
         while (elapsedTime < timeoutMs) {
             attemptNo++;
             elapsedTime = Date.now() - startTime;
@@ -294,7 +321,9 @@ async function run() {
     }
     catch (error) {
         core.error(`Failed to complete: ${error.message}`);
-        core.warning("Does the token have the correct permissions?");
+        if (error instanceof Error && !error.message.includes("Timeout")) {
+            core.warning("Does the token have the correct permissions?");
+        }
         error.stack && core.debug(error.stack);
         core.setFailed(error.message);
     }
