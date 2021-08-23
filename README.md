@@ -8,6 +8,8 @@ This Action exists as a workaround for the issue where you cannot await the comp
 
 This action requires being able to get the run ID from a dispatched action, this can be achieved through another Action i've created, [return-dispatch](https://github.com/Codex-/return-dispatch).
 
+Should a remote workflow run fail, this action will attempt to output which step failed, with a link to the workflow run itself.
+
 An example using both of these actions is documented below.
 
 ## Usage
@@ -49,6 +51,11 @@ For the sake of transparency please note that this action uses the following API
 
 - [Get a workflow run](https://docs.github.com/en/rest/reference/actions#get-a-workflow-run)
   - GET `/repos/{owner}/{repo}/actions/runs/{run_id}`
+  - Permissions:
+    - `repo`
+    - `actions:read`
+- [List jobs for a workflow run](https://docs.github.com/en/rest/reference/actions#list-jobs-for-a-workflow-run)
+  - GET `/repos/{owner}/{repo}/actions/runs/{run_id}/jobs`
   - Permissions:
     - `repo`
     - `actions:read`
