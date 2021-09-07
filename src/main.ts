@@ -87,12 +87,14 @@ async function run(): Promise<void> {
       `Timeout exceeded while awaiting completion of Run ${config.runId}`
     );
   } catch (error) {
-    core.error(`Failed to complete: ${error.message}`);
-    if (error instanceof Error && !error.message.includes("Timeout")) {
-      core.warning("Does the token have the correct permissions?");
+    if (error instanceof Error) {
+      core.error(`Failed to complete: ${error.message}`);
+      if (!error.message.includes("Timeout")) {
+        core.warning("Does the token have the correct permissions?");
+      }
+      error.stack && core.debug(error.stack);
+      core.setFailed(error.message);
     }
-    error.stack && core.debug(error.stack);
-    core.setFailed(error.message);
   }
 }
 

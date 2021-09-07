@@ -64,10 +64,12 @@ export async function getWorkflowRunState(
       conclusion: response.data.conclusion as WorkflowRunConclusion | null,
     };
   } catch (error) {
-    core.error(
-      `getWorkflowRunState: An unexpected error has occurred: ${error.message}`
-    );
-    error.stack && core.debug(error.stack);
+    if (error instanceof Error) {
+      core.error(
+        `getWorkflowRunState: An unexpected error has occurred: ${error.message}`
+      );
+      error.stack && core.debug(error.stack);
+    }
     throw error;
   }
 }
@@ -165,10 +167,12 @@ export async function getWorkflowRunFailedJobs(
 
     return jobs;
   } catch (error) {
-    core.error(
-      `getWorkflowRunJobFailures: An unexpected error has occurred: ${error.message}`
-    );
-    error.stack && core.debug(error.stack);
+    if (error instanceof Error) {
+      core.error(
+        `getWorkflowRunJobFailures: An unexpected error has occurred: ${error.message}`
+      );
+      error.stack && core.debug(error.stack);
+    }
     throw error;
   }
 }
@@ -200,10 +204,12 @@ export async function getWorkflowRunActiveJobUrl(
       fetchedInProgressJobs[0].html_url || "GitHub failed to return the URL"
     );
   } catch (error) {
-    core.error(
-      `getWorkflowRunActiveJobUrl: An unexpected error has occurred: ${error.message}`
-    );
-    error.stack && core.debug(error.stack);
+    if (error instanceof Error) {
+      core.error(
+        `getWorkflowRunActiveJobUrl: An unexpected error has occurred: ${error.message}`
+      );
+      error.stack && core.debug(error.stack);
+    }
     throw error;
   }
 }
