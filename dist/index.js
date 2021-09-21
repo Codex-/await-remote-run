@@ -116,7 +116,7 @@ var WorkflowRunConclusion;
     WorkflowRunConclusion["ActionRequired"] = "action_required";
 })(WorkflowRunConclusion = exports.WorkflowRunConclusion || (exports.WorkflowRunConclusion = {}));
 function init(cfg) {
-    config = cfg || action_1.getConfig();
+    config = cfg || (0, action_1.getConfig)();
     octokit = github.getOctokit(config.token);
 }
 exports.init = init;
@@ -142,8 +142,10 @@ async function getWorkflowRunState(runId) {
         };
     }
     catch (error) {
-        core.error(`getWorkflowRunState: An unexpected error has occurred: ${error.message}`);
-        error.stack && core.debug(error.stack);
+        if (error instanceof Error) {
+            core.error(`getWorkflowRunState: An unexpected error has occurred: ${error.message}`);
+            error.stack && core.debug(error.stack);
+        }
         throw error;
     }
 }
@@ -201,8 +203,10 @@ async function getWorkflowRunFailedJobs(runId) {
         return jobs;
     }
     catch (error) {
-        core.error(`getWorkflowRunJobFailures: An unexpected error has occurred: ${error.message}`);
-        error.stack && core.debug(error.stack);
+        if (error instanceof Error) {
+            core.error(`getWorkflowRunJobFailures: An unexpected error has occurred: ${error.message}`);
+            error.stack && core.debug(error.stack);
+        }
         throw error;
     }
 }
@@ -222,8 +226,10 @@ async function getWorkflowRunActiveJobUrl(runId) {
         return (fetchedInProgressJobs[0].html_url || "GitHub failed to return the URL");
     }
     catch (error) {
-        core.error(`getWorkflowRunActiveJobUrl: An unexpected error has occurred: ${error.message}`);
-        error.stack && core.debug(error.stack);
+        if (error instanceof Error) {
+            core.error(`getWorkflowRunActiveJobUrl: An unexpected error has occurred: ${error.message}`);
+            error.stack && core.debug(error.stack);
+        }
         throw error;
     }
 }
@@ -261,7 +267,7 @@ const core = __importStar(__nccwpck_require__(186));
 const action_1 = __nccwpck_require__(139);
 const api_1 = __nccwpck_require__(947);
 async function logFailureDetails(runId) {
-    const failedJobs = await api_1.getWorkflowRunFailedJobs(runId);
+    const failedJobs = await (0, api_1.getWorkflowRunFailedJobs)(runId);
     for (const failedJob of failedJobs) {
         const failedSteps = failedJob.steps
             .filter((step) => step.conclusion !== "success")
@@ -282,19 +288,19 @@ async function logFailureDetails(runId) {
 }
 async function run() {
     try {
-        const config = action_1.getConfig();
+        const config = (0, action_1.getConfig)();
         const startTime = Date.now();
-        api_1.init(config);
+        (0, api_1.init)(config);
         const timeoutMs = config.runTimeoutSeconds * 1000;
         let attemptNo = 0;
         let elapsedTime = Date.now() - startTime;
         core.info(`Awaiting completion of Workflow Run ${config.runId}...\n` +
             `  ID: ${config.runId}\n` +
-            `  URL: ${await api_1.getWorkflowRunActiveJobUrl(config.runId)}`);
+            `  URL: ${await (0, api_1.getWorkflowRunActiveJobUrl)(config.runId)}`);
         while (elapsedTime < timeoutMs) {
             attemptNo++;
             elapsedTime = Date.now() - startTime;
-            const { status, conclusion } = await api_1.getWorkflowRunState(config.runId);
+            const { status, conclusion } = await (0, api_1.getWorkflowRunState)(config.runId);
             if (status === api_1.WorkflowRunStatus.Completed) {
                 switch (conclusion) {
                     case api_1.WorkflowRunConclusion.Success:
@@ -320,12 +326,14 @@ async function run() {
         throw new Error(`Timeout exceeded while awaiting completion of Run ${config.runId}`);
     }
     catch (error) {
-        core.error(`Failed to complete: ${error.message}`);
-        if (error instanceof Error && !error.message.includes("Timeout")) {
-            core.warning("Does the token have the correct permissions?");
+        if (error instanceof Error) {
+            core.error(`Failed to complete: ${error.message}`);
+            if (!error.message.includes("Timeout")) {
+                core.warning("Does the token have the correct permissions?");
+            }
+            error.stack && core.debug(error.stack);
+            core.setFailed(error.message);
         }
-        error.stack && core.debug(error.stack);
-        core.setFailed(error.message);
     }
 }
 (() => run())();
