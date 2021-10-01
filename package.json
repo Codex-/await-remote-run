@@ -29,7 +29,7 @@
     "@actions/github": "^5.0.0"
   },
   "devDependencies": {
-    "@types/jest": "^27.0.1",
+    "@types/jest": "^27.0.2",
     "@types/node": "^16.9.4",
     "@types/uuid": "^8.3.1",
     "@typescript-eslint/parser": "^4.31.2",
