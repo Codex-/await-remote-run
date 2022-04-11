@@ -3,7 +3,7 @@
   "version": "1.2.4",
   "private": true,
   "description": "Await the result of a remote repository run.",
-  "main": "dist/index.js",
+  "main": "lib/main.js",
   "scripts": {
     "build": "tsc",
     "format:check": "prettier --check **/*.ts",
