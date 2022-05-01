@@ -23,7 +23,7 @@ export interface ActionConfig {
   owner: string;
 
   /**
-   * Run ID to await the completion of..
+   * Run ID to await the completion of.
    */
   runId: number;
 
