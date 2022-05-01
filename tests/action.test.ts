@@ -11,9 +11,9 @@ describe("Action", () => {
         token: "secret",
         repo: "repository",
         owner: "owner",
-        run_id: 123456,
-        run_timeout_seconds: 300,
-        poll_interval_ms: 2500,
+        run_id: "123456",
+        run_timeout_seconds: "300",
+        poll_interval_ms: "2500",
       };
 
       jest.spyOn(core, "getInput").mockImplementation((input: string) => {
