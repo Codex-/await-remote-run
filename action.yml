@@ -1,28 +1,28 @@
-name: "Await Remote Run"
-description: "Await a remote repository run to complete, returning a result."
-author: "Alex Miller"
+name: Await Remote Run
+description: Await a remote repository run to complete, returning a result.
+author: Alex Miller
 branding:
-  icon: "shield"
-  color: "purple"
+  icon: shield
+  color: purple
 inputs:
   token:
-    description: "GitHub Personal Access Token for making API requests."
+    description: GitHub Personal Access Token for making API requests.
     required: true
   repo:
-    description: "Repository of the action to dispatch."
+    description: Repository of the action to dispatch.
     required: true
   owner:
-    description: "Owner of the given repository."
+    description: Owner of the given repository.
     required: true
   run_id:
-    description: "Run ID to await the completion of."
+    description: Run ID to await the completion of.
     required: true
   run_timeout_seconds:
-    description: "Time until giving up on the run."
+    description: Time until giving up on the run.
     default: 300
   poll_interval_ms:
-    description: "Frequency to poll the run for a status."
+    description: Frequency to poll the run for a status.
     default: 5000
 runs:
-  using: "node12"
-  main: "dist/index.js"
+  using: node16
+  main: dist/index.js
