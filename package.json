@@ -5,11 +5,11 @@
   "description": "Await the result of a remote repository run.",
   "main": "lib/main.js",
   "scripts": {
-    "build": "tsc",
+    "build:bundle": "npm run build:types && node ./esbuild.config.mjs",
+    "build:types": "tsc",
     "format:check": "prettier --check **/*.ts",
     "format:write": "npm run format:check -- --write",
     "lint": "eslint src/**/*.ts",
-    "package": "npm run build && ncc build --source-map --license licenses.txt",
     "release": "release-it",
     "test": "jest"
   },
@@ -32,7 +32,8 @@
     "@types/jest": "^27.4.1",
     "@types/node": "^17.0.30",
     "@typescript-eslint/parser": "^5.21.0",
-    "@vercel/ncc": "^0.33.4",
+    "chalk": "^5.0.1",
+    "esbuild": "^0.14.38",
     "eslint": "^8.14.0",
     "eslint-config-airbnb-typescript": "^17.0.0",
     "eslint-config-prettier": "^8.5.0",

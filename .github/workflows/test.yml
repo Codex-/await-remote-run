@@ -1,4 +1,4 @@
-name: build-test
+name: Build
 on:
   pull_request:
   push:
@@ -9,6 +9,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - run: npm ci
+      - name: build
+        run: npm run build:types
       - name: test
         id: test
         if: ${{ always() }}
@@ -19,37 +21,16 @@ jobs:
       - name: style
         if: ${{ always() }}
         run: npm run format:check
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Dispatch and return Run ID
-        id: return_dispatch
-        uses: Codex-/return-dispatch@main
-        with:
-          token: ${{ secrets.TOKEN }}
-          ref: ${{ github.ref }}
-          repo: return-dispatch
-          owner: codex-
-          workflow: dispatch.yml
-          workflow_inputs: '{"cake":"delicious"}'
-      - name: Await Run ID ${{ steps.return_dispatch.outputs.run_id }}
-        uses: ./
-        with:
-          token: ${{ github.token }}
-          repo: return-dispatch
-          owner: codex-
-          run_id: ${{ steps.return_dispatch.outputs.run_id }}
   codecov: # Send only a single coverage report per run
-    needs: [build, test]
+    needs: [build]
     timeout-minutes: 15
     env:
       CI: true
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Use Node.js lts
-        uses: actions/setup-node@v2
+        uses: actions/setup-node@v3
         with:
           node-version: lts/*
           cache: npm
