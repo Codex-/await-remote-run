@@ -54,7 +54,7 @@ export async function getWorkflowRunState(
     core.debug(
       `Fetched Run:\n` +
         `  Repository: ${config.owner}/${config.repo}\n` +
-        `  Run ID: ${config.runId}\n` +
+        `  Run ID: ${runId}\n` +
         `  Status: ${response.data.status}\n` +
         `  Conclusion: ${response.data.conclusion}`
     );
