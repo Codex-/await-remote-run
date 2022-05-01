@@ -6943,6 +6943,10 @@ async function run() {
       if (status === "completed" /* Completed */) {
         switch (conclusion) {
           case "success" /* Success */:
+            core3.info(`Run Completed:
+  Run ID: ${config2.runId}
+  Status: ${status}
+  Conclusion: ${conclusion}`);
             return;
           case "action_required" /* ActionRequired */:
           case "cancelled" /* Cancelled */:

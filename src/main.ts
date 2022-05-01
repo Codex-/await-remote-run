@@ -59,6 +59,12 @@ async function run(): Promise<void> {
       if (status === WorkflowRunStatus.Completed) {
         switch (conclusion) {
           case WorkflowRunConclusion.Success:
+            core.info(
+              "Run Completed:\n" +
+                `  Run ID: ${config.runId}\n` +
+                `  Status: ${status}\n` +
+                `  Conclusion: ${conclusion}`
+            );
             return;
           case WorkflowRunConclusion.ActionRequired:
           case WorkflowRunConclusion.Cancelled:
