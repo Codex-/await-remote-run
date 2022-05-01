@@ -6,7 +6,7 @@ import {
   getWorkflowRunFailedJobs,
   getWorkflowRunState,
   init,
-} from "../src/api";
+} from "./api";
 
 interface MockResponse {
   data: any;
