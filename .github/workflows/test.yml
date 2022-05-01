@@ -32,7 +32,7 @@ jobs:
           repo: return-dispatch
           owner: codex-
           workflow: dispatch.yml
-          workflow_inputs: "{\"cake\":\"delicious\"}"
+          workflow_inputs: '{"cake":"delicious"}'
       - name: Await Run ID ${{ steps.return_dispatch.outputs.run_id }}
         uses: ./
         with:
