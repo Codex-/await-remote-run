@@ -20,6 +20,7 @@ Once you have configured your remote repository to work as expected with the `re
 steps:
   - name: Dispatch an action and get the run ID
     uses: codex-/return-dispatch@v1
+    id: return_dispatch
     with:
       token: ${{ github.token }}
       repo: repository-name
