@@ -1,6 +1,6 @@
 {
   "name": "await-remote-run",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "private": true,
   "description": "Await the result of a remote repository run.",
   "author": "Alex Miller",
