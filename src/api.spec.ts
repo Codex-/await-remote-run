@@ -1,5 +1,6 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   getWorkflowRunActiveJobUrl,
@@ -7,6 +8,9 @@ import {
   getWorkflowRunState,
   init,
 } from "./api";
+
+vi.mock("@actions/core");
+vi.mock("@actions/github");
 
 interface MockResponse {
   data: any;
@@ -38,13 +42,13 @@ describe("API", () => {
   };
 
   beforeEach(() => {
-    jest.spyOn(core, "getInput").mockReturnValue("");
-    jest.spyOn(github, "getOctokit").mockReturnValue(mockOctokit as any);
+    vi.spyOn(core, "getInput").mockReturnValue("");
+    vi.spyOn(github, "getOctokit").mockReturnValue(mockOctokit as any);
     init(cfg);
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   describe("getWorkflowRunState", () => {
@@ -53,7 +57,7 @@ describe("API", () => {
         status: "completed",
         conclusion: "cancelled",
       };
-      jest.spyOn(mockOctokit.rest.actions, "getWorkflowRun").mockReturnValue(
+      vi.spyOn(mockOctokit.rest.actions, "getWorkflowRun").mockReturnValue(
         Promise.resolve({
           data: mockData,
           status: 200,
@@ -67,7 +71,7 @@ describe("API", () => {
 
     it("should throw if a non-200 status is returned", async () => {
       const errorStatus = 401;
-      jest.spyOn(mockOctokit.rest.actions, "getWorkflowRun").mockReturnValue(
+      vi.spyOn(mockOctokit.rest.actions, "getWorkflowRun").mockReturnValue(
         Promise.resolve({
           data: undefined,
           status: errorStatus,
@@ -110,14 +114,15 @@ describe("API", () => {
 
     describe("getWorkflowRunFailedJobs", () => {
       it("should return the jobs for a failed workflow run given a run ID", async () => {
-        jest
-          .spyOn(mockOctokit.rest.actions, "listJobsForWorkflowRun")
-          .mockReturnValue(
-            Promise.resolve({
-              data: mockData,
-              status: 200,
-            })
-          );
+        vi.spyOn(
+          mockOctokit.rest.actions,
+          "listJobsForWorkflowRun"
+        ).mockReturnValue(
+          Promise.resolve({
+            data: mockData,
+            status: 200,
+          })
+        );
 
         const jobs = await getWorkflowRunFailedJobs(123456);
         expect(jobs).toHaveLength(1);
@@ -131,14 +136,15 @@ describe("API", () => {
 
       it("should throw if a non-200 status is returned", async () => {
         const errorStatus = 401;
-        jest
-          .spyOn(mockOctokit.rest.actions, "listJobsForWorkflowRun")
-          .mockReturnValue(
-            Promise.resolve({
-              data: undefined,
-              status: errorStatus,
-            })
-          );
+        vi.spyOn(
+          mockOctokit.rest.actions,
+          "listJobsForWorkflowRun"
+        ).mockReturnValue(
+          Promise.resolve({
+            data: undefined,
+            status: errorStatus,
+          })
+        );
 
         await expect(getWorkflowRunFailedJobs(0)).rejects.toThrow(
           `Failed to get Jobs for Workflow Run, expected 200 but received ${errorStatus}`
@@ -147,14 +153,15 @@ describe("API", () => {
 
       it("should return the steps for a failed Job", async () => {
         const mockSteps = mockData.jobs[0].steps;
-        jest
-          .spyOn(mockOctokit.rest.actions, "listJobsForWorkflowRun")
-          .mockReturnValue(
-            Promise.resolve({
-              data: mockData,
-              status: 200,
-            })
-          );
+        vi.spyOn(
+          mockOctokit.rest.actions,
+          "listJobsForWorkflowRun"
+        ).mockReturnValue(
+          Promise.resolve({
+            data: mockData,
+            status: 200,
+          })
+        );
 
         const { steps } = (await getWorkflowRunFailedJobs(123456))[0];
         expect(steps).toHaveLength(mockData.jobs[0].steps.length);
@@ -184,14 +191,15 @@ describe("API", () => {
       });
 
       it("should return the url for an in_progress workflow run given a run ID", async () => {
-        jest
-          .spyOn(mockOctokit.rest.actions, "listJobsForWorkflowRun")
-          .mockReturnValue(
-            Promise.resolve({
-              data: inProgressMockData,
-              status: 200,
-            })
-          );
+        vi.spyOn(
+          mockOctokit.rest.actions,
+          "listJobsForWorkflowRun"
+        ).mockReturnValue(
+          Promise.resolve({
+            data: inProgressMockData,
+            status: 200,
+          })
+        );
 
         const url = await getWorkflowRunActiveJobUrl(123456);
         expect(url).toStrictEqual(mockData.jobs[0].html_url);
@@ -199,14 +207,15 @@ describe("API", () => {
 
       it("should throw if a non-200 status is returned", async () => {
         const errorStatus = 401;
-        jest
-          .spyOn(mockOctokit.rest.actions, "listJobsForWorkflowRun")
-          .mockReturnValue(
-            Promise.resolve({
-              data: undefined,
-              status: errorStatus,
-            })
-          );
+        vi.spyOn(
+          mockOctokit.rest.actions,
+          "listJobsForWorkflowRun"
+        ).mockReturnValue(
+          Promise.resolve({
+            data: undefined,
+            status: errorStatus,
+          })
+        );
 
         await expect(getWorkflowRunActiveJobUrl(0)).rejects.toThrow(
           `Failed to get Jobs for Workflow Run, expected 200 but received ${errorStatus}`
@@ -216,14 +225,15 @@ describe("API", () => {
       it("should return even if no in_progress job is found", async () => {
         inProgressMockData.jobs[0].status = "unknown";
 
-        jest
-          .spyOn(mockOctokit.rest.actions, "listJobsForWorkflowRun")
-          .mockReturnValue(
-            Promise.resolve({
-              data: inProgressMockData,
-              status: 200,
-            })
-          );
+        vi.spyOn(
+          mockOctokit.rest.actions,
+          "listJobsForWorkflowRun"
+        ).mockReturnValue(
+          Promise.resolve({
+            data: inProgressMockData,
+            status: 200,
+          })
+        );
 
         const url = await getWorkflowRunActiveJobUrl(123456);
         expect(url).toStrictEqual("Unable to fetch URL");
@@ -232,14 +242,15 @@ describe("API", () => {
       it("should return even if GitHub fails to return a URL", async () => {
         inProgressMockData.jobs[0].html_url = null;
 
-        jest
-          .spyOn(mockOctokit.rest.actions, "listJobsForWorkflowRun")
-          .mockReturnValue(
-            Promise.resolve({
-              data: inProgressMockData,
-              status: 200,
-            })
-          );
+        vi.spyOn(
+          mockOctokit.rest.actions,
+          "listJobsForWorkflowRun"
+        ).mockReturnValue(
+          Promise.resolve({
+            data: inProgressMockData,
+            status: 200,
+          })
+        );
 
         const url = await getWorkflowRunActiveJobUrl(123456);
         expect(url).toStrictEqual("GitHub failed to return the URL");
