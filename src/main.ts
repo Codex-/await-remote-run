@@ -98,6 +98,7 @@ async function run(): Promise<void> {
       if (!error.message.includes("Timeout")) {
         core.warning("Does the token have the correct permissions?");
       }
+      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
       error.stack && core.debug(error.stack);
       core.setFailed(error.message);
     }

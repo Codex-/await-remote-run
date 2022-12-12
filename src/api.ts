@@ -68,6 +68,7 @@ export async function getWorkflowRunState(
       core.error(
         `getWorkflowRunState: An unexpected error has occurred: ${error.message}`
       );
+      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
       error.stack && core.debug(error.stack);
     }
     throw error;
@@ -171,6 +172,7 @@ export async function getWorkflowRunFailedJobs(
       core.error(
         `getWorkflowRunJobFailures: An unexpected error has occurred: ${error.message}`
       );
+      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
       error.stack && core.debug(error.stack);
     }
     throw error;
@@ -208,6 +210,7 @@ export async function getWorkflowRunActiveJobUrl(
       core.error(
         `getWorkflowRunActiveJobUrl: An unexpected error has occurred: ${error.message}`
       );
+      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
       error.stack && core.debug(error.stack);
     }
     throw error;
