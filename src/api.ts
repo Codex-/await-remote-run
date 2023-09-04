@@ -35,7 +35,7 @@ export interface WorkflowRunState {
 }
 
 export async function getWorkflowRunState(
-  runId: number
+  runId: number,
 ): Promise<WorkflowRunState> {
   try {
     // https://docs.github.com/en/rest/reference/actions#get-a-workflow-run
@@ -47,7 +47,7 @@ export async function getWorkflowRunState(
 
     if (response.status !== 200) {
       throw new Error(
-        `Failed to get Workflow Run state, expected 200 but received ${response.status}`
+        `Failed to get Workflow Run state, expected 200 but received ${response.status}`,
       );
     }
 
@@ -56,7 +56,7 @@ export async function getWorkflowRunState(
         `  Repository: ${config.owner}/${config.repo}\n` +
         `  Run ID: ${runId}\n` +
         `  Status: ${response.data.status}\n` +
-        `  Conclusion: ${response.data.conclusion}`
+        `  Conclusion: ${response.data.conclusion}`,
     );
 
     return {
@@ -66,7 +66,7 @@ export async function getWorkflowRunState(
   } catch (error) {
     if (error instanceof Error) {
       core.error(
-        `getWorkflowRunState: An unexpected error has occurred: ${error.message}`
+        `getWorkflowRunState: An unexpected error has occurred: ${error.message}`,
       );
       // eslint-disable-next-line @typescript-eslint/no-unused-expressions
       error.stack && core.debug(error.stack);
@@ -97,7 +97,7 @@ type ListJobsForWorkflowRunResponse = Awaited<
 >;
 
 async function getWorkflowRunJobs(
-  runId: number
+  runId: number,
 ): Promise<ListJobsForWorkflowRunResponse> {
   // https://docs.github.com/en/rest/reference/actions#list-jobs-for-a-workflow-run
   const response = await octokit.rest.actions.listJobsForWorkflowRun({
@@ -109,7 +109,7 @@ async function getWorkflowRunJobs(
 
   if (response.status !== 200) {
     throw new Error(
-      `Failed to get Jobs for Workflow Run, expected 200 but received ${response.status}`
+      `Failed to get Jobs for Workflow Run, expected 200 but received ${response.status}`,
     );
   }
 
@@ -117,12 +117,12 @@ async function getWorkflowRunJobs(
 }
 
 export async function getWorkflowRunFailedJobs(
-  runId: number
+  runId: number,
 ): Promise<WorkflowRunJob[]> {
   try {
     const response = await getWorkflowRunJobs(runId);
     const fetchedFailedJobs = response.data.jobs.filter(
-      (job) => job.conclusion === "failure"
+      (job) => job.conclusion === "failure",
     );
 
     if (fetchedFailedJobs.length <= 0) {
@@ -152,7 +152,7 @@ export async function getWorkflowRunFailedJobs(
       `Fetched Jobs for Run:\n` +
         `  Repository: ${config.owner}/${config.repo}\n` +
         `  Run ID: ${config.runId}\n` +
-        `  Jobs: [${jobs.map((job) => job.name)}]`
+        `  Jobs: [${jobs.map((job) => job.name)}]`,
     );
 
     for (const job of jobs) {
@@ -162,7 +162,7 @@ export async function getWorkflowRunFailedJobs(
           `    ID: ${job.id}\n` +
           `    Status: ${job.status}\n` +
           `    Conclusion: ${job.conclusion}\n` +
-          `    Steps: [${steps}]`
+          `    Steps: [${steps}]`,
       );
     }
 
@@ -170,7 +170,7 @@ export async function getWorkflowRunFailedJobs(
   } catch (error) {
     if (error instanceof Error) {
       core.error(
-        `getWorkflowRunJobFailures: An unexpected error has occurred: ${error.message}`
+        `getWorkflowRunJobFailures: An unexpected error has occurred: ${error.message}`,
       );
       // eslint-disable-next-line @typescript-eslint/no-unused-expressions
       error.stack && core.debug(error.stack);
@@ -180,12 +180,12 @@ export async function getWorkflowRunFailedJobs(
 }
 
 export async function getWorkflowRunActiveJobUrl(
-  runId: number
+  runId: number,
 ): Promise<string> {
   try {
     const response = await getWorkflowRunJobs(runId);
     const fetchedInProgressJobs = response.data.jobs.filter(
-      (job) => job.status === "in_progress"
+      (job) => job.status === "in_progress",
     );
 
     if (fetchedInProgressJobs.length <= 0) {
@@ -198,8 +198,8 @@ export async function getWorkflowRunActiveJobUrl(
         `  Repository: ${config.owner}/${config.repo}\n` +
         `  Run ID: ${config.runId}\n` +
         `  Jobs (in_progress): [${fetchedInProgressJobs.map(
-          (job) => job.name
-        )}]`
+          (job) => job.name,
+        )}]`,
     );
 
     return (
@@ -208,7 +208,7 @@ export async function getWorkflowRunActiveJobUrl(
   } catch (error) {
     if (error instanceof Error) {
       core.error(
-        `getWorkflowRunActiveJobUrl: An unexpected error has occurred: ${error.message}`
+        `getWorkflowRunActiveJobUrl: An unexpected error has occurred: ${error.message}`,
       );
       // eslint-disable-next-line @typescript-eslint/no-unused-expressions
       error.stack && core.debug(error.stack);

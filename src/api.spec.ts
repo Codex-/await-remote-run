@@ -61,7 +61,7 @@ describe("API", () => {
         Promise.resolve({
           data: mockData,
           status: 200,
-        })
+        }),
       );
 
       const state = await getWorkflowRunState(123456);
@@ -75,11 +75,11 @@ describe("API", () => {
         Promise.resolve({
           data: undefined,
           status: errorStatus,
-        })
+        }),
       );
 
       await expect(getWorkflowRunState(0)).rejects.toThrow(
-        `Failed to get Workflow Run state, expected 200 but received ${errorStatus}`
+        `Failed to get Workflow Run state, expected 200 but received ${errorStatus}`,
       );
     });
   });
@@ -116,12 +116,12 @@ describe("API", () => {
       it("should return the jobs for a failed workflow run given a run ID", async () => {
         vi.spyOn(
           mockOctokit.rest.actions,
-          "listJobsForWorkflowRun"
+          "listJobsForWorkflowRun",
         ).mockReturnValue(
           Promise.resolve({
             data: mockData,
             status: 200,
-          })
+          }),
         );
 
         const jobs = await getWorkflowRunFailedJobs(123456);
@@ -138,16 +138,16 @@ describe("API", () => {
         const errorStatus = 401;
         vi.spyOn(
           mockOctokit.rest.actions,
-          "listJobsForWorkflowRun"
+          "listJobsForWorkflowRun",
         ).mockReturnValue(
           Promise.resolve({
             data: undefined,
             status: errorStatus,
-          })
+          }),
         );
 
         await expect(getWorkflowRunFailedJobs(0)).rejects.toThrow(
-          `Failed to get Jobs for Workflow Run, expected 200 but received ${errorStatus}`
+          `Failed to get Jobs for Workflow Run, expected 200 but received ${errorStatus}`,
         );
       });
 
@@ -155,12 +155,12 @@ describe("API", () => {
         const mockSteps = mockData.jobs[0].steps;
         vi.spyOn(
           mockOctokit.rest.actions,
-          "listJobsForWorkflowRun"
+          "listJobsForWorkflowRun",
         ).mockReturnValue(
           Promise.resolve({
             data: mockData,
             status: 200,
-          })
+          }),
         );
 
         const { steps } = (await getWorkflowRunFailedJobs(123456))[0];
@@ -193,12 +193,12 @@ describe("API", () => {
       it("should return the url for an in_progress workflow run given a run ID", async () => {
         vi.spyOn(
           mockOctokit.rest.actions,
-          "listJobsForWorkflowRun"
+          "listJobsForWorkflowRun",
         ).mockReturnValue(
           Promise.resolve({
             data: inProgressMockData,
             status: 200,
-          })
+          }),
         );
 
         const url = await getWorkflowRunActiveJobUrl(123456);
@@ -209,16 +209,16 @@ describe("API", () => {
         const errorStatus = 401;
         vi.spyOn(
           mockOctokit.rest.actions,
-          "listJobsForWorkflowRun"
+          "listJobsForWorkflowRun",
         ).mockReturnValue(
           Promise.resolve({
             data: undefined,
             status: errorStatus,
-          })
+          }),
         );
 
         await expect(getWorkflowRunActiveJobUrl(0)).rejects.toThrow(
-          `Failed to get Jobs for Workflow Run, expected 200 but received ${errorStatus}`
+          `Failed to get Jobs for Workflow Run, expected 200 but received ${errorStatus}`,
         );
       });
 
@@ -227,12 +227,12 @@ describe("API", () => {
 
         vi.spyOn(
           mockOctokit.rest.actions,
-          "listJobsForWorkflowRun"
+          "listJobsForWorkflowRun",
         ).mockReturnValue(
           Promise.resolve({
             data: inProgressMockData,
             status: 200,
-          })
+          }),
         );
 
         const url = await getWorkflowRunActiveJobUrl(123456);
@@ -244,12 +244,12 @@ describe("API", () => {
 
         vi.spyOn(
           mockOctokit.rest.actions,
-          "listJobsForWorkflowRun"
+          "listJobsForWorkflowRun",
         ).mockReturnValue(
           Promise.resolve({
             data: inProgressMockData,
             status: 200,
-          })
+          }),
         );
 
         const url = await getWorkflowRunActiveJobUrl(123456);
