@@ -29,7 +29,7 @@ async function logFailureDetails(runId: number): Promise<void> {
         `  Conclusion: ${failedJob.conclusion}\n` +
         `  URL: ${failedJob.url}\n` +
         `  Steps (non-success):\n` +
-        failedSteps
+        failedSteps,
     );
   }
 }
@@ -47,7 +47,7 @@ async function run(): Promise<void> {
     core.info(
       `Awaiting completion of Workflow Run ${config.runId}...\n` +
         `  ID: ${config.runId}\n` +
-        `  URL: ${await getWorkflowRunActiveJobUrl(config.runId)}`
+        `  URL: ${await getWorkflowRunActiveJobUrl(config.runId)}`,
     );
 
     while (elapsedTime < timeoutMs) {
@@ -63,7 +63,7 @@ async function run(): Promise<void> {
               "Run Completed:\n" +
                 `  Run ID: ${config.runId}\n` +
                 `  Status: ${status}\n` +
-                `  Conclusion: ${conclusion}`
+                `  Conclusion: ${conclusion}`,
             );
             return;
           case WorkflowRunConclusion.ActionRequired:
@@ -85,12 +85,12 @@ async function run(): Promise<void> {
       core.debug(`Run has not concluded, attempt ${attemptNo}...`);
 
       await new Promise((resolve) =>
-        setTimeout(resolve, config.pollIntervalMs)
+        setTimeout(resolve, config.pollIntervalMs),
       );
     }
 
     throw new Error(
-      `Timeout exceeded while awaiting completion of Run ${config.runId}`
+      `Timeout exceeded while awaiting completion of Run ${config.runId}`,
     );
   } catch (error) {
     if (error instanceof Error) {
