@@ -5,7 +5,7 @@ import { analyzeMetafile, build } from "esbuild";
   try {
     const startTime = Date.now();
     console.info(
-      chalk.bold(`🚀 ${chalk.blueBright("await-remote-run")} Build\n`)
+      chalk.bold(`🚀 ${chalk.blueBright("await-remote-run")} Build\n`),
     );
 
     const result = await build({
@@ -13,10 +13,17 @@ import { analyzeMetafile, build } from "esbuild";
       outfile: "dist/index.js",
       metafile: true,
       bundle: true,
+      format: "esm",
       platform: "node",
       target: ["node20"],
       sourcemap: "external",
       treeShaking: true,
+      // Ensure require is properly defined: https://github.com/evanw/esbuild/issues/1921
+      banner: {
+        js:
+          "import { createRequire } from 'module';\n" +
+          "const require = createRequire(import.meta.url);",
+      },
     });
 
     const analysis = await analyzeMetafile(result.metafile);
@@ -25,7 +32,7 @@ import { analyzeMetafile, build } from "esbuild";
     console.info(
       `${chalk.bold.green("✔ Bundled successfully!")} (${
         Date.now() - startTime
-      }ms)`
+      }ms)`,
     );
   } catch (error) {
     console.error(`🧨 ${chalk.red.bold("Failed:")} ${error.message}`);

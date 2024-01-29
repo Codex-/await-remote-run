@@ -5,8 +5,10 @@
   "description": "Await the result of a remote repository run.",
   "author": "Alex Miller",
   "license": "MIT",
+  "type": "module",
   "scripts": {
-    "build:bundle": "npm run build:types && node ./esbuild.config.mjs",
+    "build": "npm run build:types && npm run build:bundle",
+    "build:bundle": "node ./esbuild.config.mjs",
     "build:types": "tsc",
     "format:check": "prettier --check **/*.ts",
     "format": "npm run format:check -- --write",

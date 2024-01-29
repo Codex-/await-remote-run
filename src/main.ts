@@ -1,5 +1,5 @@
 import * as core from "@actions/core";
-import { getConfig } from "./action";
+import { getConfig } from "./action.ts";
 import {
   getWorkflowRunActiveJobUrl,
   getWorkflowRunFailedJobs,
@@ -7,7 +7,7 @@ import {
   init,
   WorkflowRunConclusion,
   WorkflowRunStatus,
-} from "./api";
+} from "./api.ts";
 
 async function logFailureDetails(runId: number): Promise<void> {
   const failedJobs = await getWorkflowRunFailedJobs(runId);

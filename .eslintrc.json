@@ -42,6 +42,7 @@
     "eslint-comments/no-use": "off",
     "filenames/match-regex": "off",
     "i18n-text/no-en": "off",
+    "import/extensions": "off",
     "import/first": "off",
     "import/named": "off",
     "import/no-extraneous-dependencies": [

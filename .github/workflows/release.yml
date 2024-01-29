@@ -32,7 +32,7 @@ jobs:
         run: npm run build:types
       - name: Generate Bundle
         run: npm run build:bundle
-        # We need to make sure the checked-in `index.js` actually matches what we expect it to be.
+        # We need to make sure the checked-in `index.mjs` actually matches what we expect it to be.
       - name: Compare the expected and actual dist/ directories
         run: |
           if [ "$(git diff --ignore-space-at-eol dist/ | wc -l)" -gt "0" ]; then
