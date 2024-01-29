@@ -7,7 +7,7 @@ import {
   getWorkflowRunFailedJobs,
   getWorkflowRunState,
   init,
-} from "./api";
+} from "./api.ts";
 
 vi.mock("@actions/core");
 vi.mock("@actions/github");
@@ -126,12 +126,12 @@ describe("API", () => {
 
         const jobs = await getWorkflowRunFailedJobs(123456);
         expect(jobs).toHaveLength(1);
-        expect(jobs[0].id).toStrictEqual(mockData.jobs[0].id);
-        expect(jobs[0].name).toStrictEqual(mockData.jobs[0].name);
-        expect(jobs[0].status).toStrictEqual(mockData.jobs[0].status);
-        expect(jobs[0].conclusion).toStrictEqual(mockData.jobs[0].conclusion);
-        expect(jobs[0].url).toStrictEqual(mockData.jobs[0].html_url);
-        expect(Array.isArray(jobs[0].steps)).toStrictEqual(true);
+        expect(jobs[0]?.id).toStrictEqual(mockData.jobs[0]?.id);
+        expect(jobs[0]?.name).toStrictEqual(mockData.jobs[0]?.name);
+        expect(jobs[0]?.status).toStrictEqual(mockData.jobs[0]?.status);
+        expect(jobs[0]?.conclusion).toStrictEqual(mockData.jobs[0]?.conclusion);
+        expect(jobs[0]?.url).toStrictEqual(mockData.jobs[0]?.html_url);
+        expect(Array.isArray(jobs[0]?.steps)).toStrictEqual(true);
       });
 
       it("should throw if a non-200 status is returned", async () => {
@@ -152,7 +152,7 @@ describe("API", () => {
       });
 
       it("should return the steps for a failed Job", async () => {
-        const mockSteps = mockData.jobs[0].steps;
+        const mockSteps = mockData.jobs[0]!.steps;
         vi.spyOn(
           mockOctokit.rest.actions,
           "listJobsForWorkflowRun",
@@ -163,13 +163,13 @@ describe("API", () => {
           }),
         );
 
-        const { steps } = (await getWorkflowRunFailedJobs(123456))[0];
-        expect(steps).toHaveLength(mockData.jobs[0].steps.length);
+        const { steps } = (await getWorkflowRunFailedJobs(123456))[0]!;
+        expect(steps).toHaveLength(mockData.jobs[0]!.steps.length);
         for (let i = 0; i < mockSteps.length; i++) {
-          expect(steps[i].name).toStrictEqual(mockSteps[i].name);
-          expect(steps[i].number).toStrictEqual(mockSteps[i].number);
-          expect(steps[i].status).toStrictEqual(mockSteps[i].status);
-          expect(steps[i].conclusion).toStrictEqual(mockSteps[i].conclusion);
+          expect(steps[i]?.name).toStrictEqual(mockSteps[i]?.name);
+          expect(steps[i]?.number).toStrictEqual(mockSteps[i]?.number);
+          expect(steps[i]?.status).toStrictEqual(mockSteps[i]?.status);
+          expect(steps[i]?.conclusion).toStrictEqual(mockSteps[i]?.conclusion);
         }
       });
     });
@@ -202,7 +202,7 @@ describe("API", () => {
         );
 
         const url = await getWorkflowRunActiveJobUrl(123456);
-        expect(url).toStrictEqual(mockData.jobs[0].html_url);
+        expect(url).toStrictEqual(mockData.jobs[0]?.html_url);
       });
 
       it("should throw if a non-200 status is returned", async () => {

@@ -1,9 +1,8 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
-import type { GitHub } from "@actions/github/lib/utils";
-import { ActionConfig, getConfig } from "./action";
+import { type ActionConfig, getConfig } from "./action.ts";
 
-type Octokit = InstanceType<typeof GitHub>;
+type Octokit = ReturnType<(typeof github)["getOctokit"]>;
 
 let config: ActionConfig;
 let octokit: Octokit;
@@ -25,7 +24,7 @@ export enum WorkflowRunConclusion {
 }
 
 export function init(cfg?: ActionConfig): void {
-  config = cfg || getConfig();
+  config = cfg ?? getConfig();
   octokit = github.getOctokit(config.token);
 }
 
@@ -203,7 +202,7 @@ export async function getWorkflowRunActiveJobUrl(
     );
 
     return (
-      fetchedInProgressJobs[0].html_url || "GitHub failed to return the URL"
+      fetchedInProgressJobs[0]?.html_url ?? "GitHub failed to return the URL"
     );
   } catch (error) {
     if (error instanceof Error) {
