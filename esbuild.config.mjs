@@ -10,13 +10,12 @@ import { analyzeMetafile, build } from "esbuild";
 
     const result = await build({
       entryPoints: ["./src/main.ts"],
-      outfile: "dist/index.js",
+      outfile: "dist/index.mjs",
       metafile: true,
       bundle: true,
       format: "esm",
       platform: "node",
       target: ["node20"],
-      sourcemap: "external",
       treeShaking: true,
       // Ensure require is properly defined: https://github.com/evanw/esbuild/issues/1921
       banner: {
