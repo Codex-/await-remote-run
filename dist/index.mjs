@@ -23027,10 +23027,6 @@ async function getWorkflowRunActiveJobUrl(runId) {
     const fetchedInProgressJobs = response.data.jobs.filter(
       (job) => job.status === "in_progress"
     );
-    if (fetchedInProgressJobs.length <= 0) {
-      core2.warning(`Failed to find in_progress Jobs for Workflow Run ${runId}`);
-      return "Unable to fetch URL";
-    }
     core2.debug(
       `Fetched Jobs for Run:
   Repository: ${config.owner}/${config.repo}
@@ -23039,6 +23035,9 @@ async function getWorkflowRunActiveJobUrl(runId) {
         (job) => job.name
       )}]`
     );
+    if (fetchedInProgressJobs.length <= 0) {
+      return void 0;
+    }
     return fetchedInProgressJobs[0]?.html_url ?? "GitHub failed to return the URL";
   } catch (error3) {
     if (error3 instanceof Error) {
@@ -23049,6 +23048,23 @@ async function getWorkflowRunActiveJobUrl(runId) {
     }
     throw error3;
   }
+}
+async function getWorkflowRunActiveJobUrlRetry(runId, timeout) {
+  const startTime = Date.now();
+  let elapsedTime = Date.now() - startTime;
+  while (elapsedTime < timeout) {
+    elapsedTime = Date.now() - startTime;
+    core2.debug(
+      `No in_progress Jobs found for Workflow Run ${runId}, retrying...`
+    );
+    const url = await getWorkflowRunActiveJobUrl(runId);
+    if (url) {
+      return url;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  core2.debug(`Timed out while trying to fetch URL for Workflow Run ${runId}`);
+  return "Unable to fetch URL";
 }
 
 // src/main.ts
@@ -23082,7 +23098,7 @@ async function run() {
     core3.info(
       `Awaiting completion of Workflow Run ${config2.runId}...
   ID: ${config2.runId}
-  URL: ${await getWorkflowRunActiveJobUrl(config2.runId)}`
+  URL: ${await getWorkflowRunActiveJobUrlRetry(config2.runId, 1e3)}`
     );
     while (elapsedTime < timeoutMs) {
       attemptNo++;

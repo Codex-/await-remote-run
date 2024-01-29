@@ -1,7 +1,7 @@
 import * as core from "@actions/core";
 import { getConfig } from "./action.ts";
 import {
-  getWorkflowRunActiveJobUrl,
+  getWorkflowRunActiveJobUrlRetry,
   getWorkflowRunFailedJobs,
   getWorkflowRunState,
   init,
@@ -47,7 +47,7 @@ async function run(): Promise<void> {
     core.info(
       `Awaiting completion of Workflow Run ${config.runId}...\n` +
         `  ID: ${config.runId}\n` +
-        `  URL: ${await getWorkflowRunActiveJobUrl(config.runId)}`,
+        `  URL: ${await getWorkflowRunActiveJobUrlRetry(config.runId, 1000)}`,
     );
 
     while (elapsedTime < timeoutMs) {
