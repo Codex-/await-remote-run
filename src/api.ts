@@ -184,15 +184,15 @@ export async function getWorkflowRunActiveJobUrl(
   try {
     const response = await getWorkflowRunJobs(runId);
     const fetchedInProgressJobs = response.data.jobs.filter(
-      (job) => job.status === "in_progress",
+      (job) => job.status === "in_progress" || job.status === "completed",
     );
 
     core.debug(
       `Fetched Jobs for Run:\n` +
         `  Repository: ${config.owner}/${config.repo}\n` +
         `  Run ID: ${config.runId}\n` +
-        `  Jobs (in_progress): [${fetchedInProgressJobs.map(
-          (job) => job.name,
+        `  Jobs: [${fetchedInProgressJobs.map(
+          (job) => `${job.name} (${job.status})`,
         )}]`,
     );
 

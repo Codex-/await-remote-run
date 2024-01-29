@@ -206,6 +206,23 @@ describe("API", () => {
         expect(url).toStrictEqual(mockData.jobs[0]?.html_url);
       });
 
+      it("should return the url for an completed workflow run given a run ID", async () => {
+        inProgressMockData.jobs[0].status = "completed";
+
+        vi.spyOn(
+          mockOctokit.rest.actions,
+          "listJobsForWorkflowRun",
+        ).mockReturnValue(
+          Promise.resolve({
+            data: inProgressMockData,
+            status: 200,
+          }),
+        );
+
+        const url = await getWorkflowRunActiveJobUrl(123456);
+        expect(url).toStrictEqual(mockData.jobs[0]?.html_url);
+      });
+
       it("should throw if a non-200 status is returned", async () => {
         const errorStatus = 401;
         vi.spyOn(

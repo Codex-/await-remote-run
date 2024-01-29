@@ -23025,14 +23025,14 @@ async function getWorkflowRunActiveJobUrl(runId) {
   try {
     const response = await getWorkflowRunJobs(runId);
     const fetchedInProgressJobs = response.data.jobs.filter(
-      (job) => job.status === "in_progress"
+      (job) => job.status === "in_progress" || job.status === "completed"
     );
     core2.debug(
       `Fetched Jobs for Run:
   Repository: ${config.owner}/${config.repo}
   Run ID: ${config.runId}
-  Jobs (in_progress): [${fetchedInProgressJobs.map(
-        (job) => job.name
+  Jobs: [${fetchedInProgressJobs.map(
+        (job) => `${job.name} (${job.status})`
       )}]`
     );
     if (fetchedInProgressJobs.length <= 0) {
