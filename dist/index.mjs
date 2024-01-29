@@ -23038,7 +23038,7 @@ async function getWorkflowRunActiveJobUrl(runId) {
     if (fetchedInProgressJobs.length <= 0) {
       return void 0;
     }
-    return fetchedInProgressJobs[0]?.html_url ?? "GitHub failed to return the URL";
+    return fetchedInProgressJobs[0]?.html_url || "GitHub failed to return the URL";
   } catch (error3) {
     if (error3 instanceof Error) {
       core2.error(
@@ -23055,7 +23055,7 @@ async function getWorkflowRunActiveJobUrlRetry(runId, timeout) {
   while (elapsedTime < timeout) {
     elapsedTime = Date.now() - startTime;
     core2.debug(
-      `No in_progress Jobs found for Workflow Run ${runId}, retrying...`
+      `No 'in_progress' or 'completed' Jobs found for Workflow Run ${runId}, retrying...`
     );
     const url = await getWorkflowRunActiveJobUrl(runId);
     if (url) {
