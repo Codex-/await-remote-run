@@ -10,17 +10,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set target branch
-        run: echo "TARGET_BRANCH=${{ github.ref }}" >> $GITHUB_ENV
-      - name: Set target branch for PR event
-        if: ${{ github.event_name == 'pull_request' }}
-        run: echo "TARGET_BRANCH=${{ github.event.pull_request.head.ref }}" >> $GITHUB_ENV
       - name: Dispatch and return Run ID
         id: return_dispatch
         uses: Codex-/return-dispatch@main
         with:
           token: ${{ secrets.TOKEN }}
-          ref: ${{ env.TARGET_BRANCH }}
+          ref: main
           repo: return-dispatch
           owner: codex-
           workflow: dispatch.yml
