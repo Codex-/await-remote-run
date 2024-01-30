@@ -23066,6 +23066,29 @@ async function getWorkflowRunActiveJobUrlRetry(runId, timeout) {
   core2.debug(`Timed out while trying to fetch URL for Workflow Run ${runId}`);
   return "Unable to fetch URL";
 }
+async function retryOnError(func, name, timeout = 5e3) {
+  const startTime = Date.now();
+  let elapsedTime = Date.now() - startTime;
+  while (elapsedTime < timeout) {
+    elapsedTime = Date.now() - startTime;
+    try {
+      return await func();
+    } catch (error3) {
+      if (error3 instanceof Error) {
+        if (Date.now() - startTime >= timeout) {
+          throw error3;
+        }
+        core2.warning(
+          `retryOnError: An unexpected error has occurred:
+  name: ${name}
+  error: ${error3.message}`
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1e3));
+    }
+  }
+  throw new Error(`Timeout exceeded while attempting to retry ${name}`);
+}
 
 // src/main.ts
 async function logFailureDetails(runId) {
@@ -23103,7 +23126,11 @@ async function run() {
     while (elapsedTime < timeoutMs) {
       attemptNo++;
       elapsedTime = Date.now() - startTime;
-      const { status, conclusion } = await getWorkflowRunState(config2.runId);
+      const { status, conclusion } = await retryOnError(
+        async () => getWorkflowRunState(config2.runId),
+        "getWorkflowRunState",
+        400
+      );
       if (status === "completed" /* Completed */) {
         switch (conclusion) {
           case "success" /* Success */:

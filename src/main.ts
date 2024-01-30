@@ -5,6 +5,7 @@ import {
   getWorkflowRunFailedJobs,
   getWorkflowRunState,
   init,
+  retryOnError,
   WorkflowRunConclusion,
   WorkflowRunStatus,
 } from "./api.ts";
@@ -54,7 +55,11 @@ async function run(): Promise<void> {
       attemptNo++;
       elapsedTime = Date.now() - startTime;
 
-      const { status, conclusion } = await getWorkflowRunState(config.runId);
+      const { status, conclusion } = await retryOnError(
+        async () => getWorkflowRunState(config.runId),
+        "getWorkflowRunState",
+        400,
+      );
 
       if (status === WorkflowRunStatus.Completed) {
         switch (conclusion) {
