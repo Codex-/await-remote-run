@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   getWorkflowRunActiveJobUrl,
+  getWorkflowRunActiveJobUrlRetry,
   getWorkflowRunFailedJobs,
   getWorkflowRunState,
   init,
@@ -205,6 +206,23 @@ describe("API", () => {
         expect(url).toStrictEqual(mockData.jobs[0]?.html_url);
       });
 
+      it("should return the url for an completed workflow run given a run ID", async () => {
+        inProgressMockData.jobs[0].status = "completed";
+
+        vi.spyOn(
+          mockOctokit.rest.actions,
+          "listJobsForWorkflowRun",
+        ).mockReturnValue(
+          Promise.resolve({
+            data: inProgressMockData,
+            status: 200,
+          }),
+        );
+
+        const url = await getWorkflowRunActiveJobUrl(123456);
+        expect(url).toStrictEqual(mockData.jobs[0]?.html_url);
+      });
+
       it("should throw if a non-200 status is returned", async () => {
         const errorStatus = 401;
         vi.spyOn(
@@ -222,7 +240,7 @@ describe("API", () => {
         );
       });
 
-      it("should return even if no in_progress job is found", async () => {
+      it("should return undefined if no in_progress job is found", async () => {
         inProgressMockData.jobs[0].status = "unknown";
 
         vi.spyOn(
@@ -236,7 +254,7 @@ describe("API", () => {
         );
 
         const url = await getWorkflowRunActiveJobUrl(123456);
-        expect(url).toStrictEqual("Unable to fetch URL");
+        expect(url).toStrictEqual(undefined);
       });
 
       it("should return even if GitHub fails to return a URL", async () => {
@@ -254,6 +272,92 @@ describe("API", () => {
 
         const url = await getWorkflowRunActiveJobUrl(123456);
         expect(url).toStrictEqual("GitHub failed to return the URL");
+      });
+
+      describe("getWorkflowRunActiveJobUrlRetry", () => {
+        beforeEach(() => {
+          vi.useFakeTimers();
+        });
+
+        afterEach(() => {
+          vi.useRealTimers();
+        });
+
+        it("should return a message if no job is found", async () => {
+          inProgressMockData.jobs[0].status = "unknown";
+
+          vi.spyOn(
+            mockOctokit.rest.actions,
+            "listJobsForWorkflowRun",
+          ).mockReturnValue(
+            Promise.resolve({
+              data: inProgressMockData,
+              status: 200,
+            }),
+          );
+
+          const urlPromise = getWorkflowRunActiveJobUrlRetry(123456, 100);
+          vi.advanceTimersByTime(400);
+          await vi.advanceTimersByTimeAsync(400);
+
+          const url = await urlPromise;
+          expect(url).toStrictEqual("Unable to fetch URL");
+        });
+
+        it("should return a message if no job is found within the timeout period", async () => {
+          vi.spyOn(mockOctokit.rest.actions, "listJobsForWorkflowRun")
+            // Final
+            .mockImplementation(() => {
+              inProgressMockData.jobs[0].status = "in_progress";
+
+              return Promise.resolve({
+                data: inProgressMockData,
+                status: 200,
+              });
+            })
+            // First
+            .mockImplementationOnce(() => {
+              inProgressMockData.jobs[0].status = "unknown";
+
+              return Promise.resolve({
+                data: inProgressMockData,
+                status: 200,
+              });
+            })
+            // Second
+            .mockImplementationOnce(() =>
+              Promise.resolve({
+                data: inProgressMockData,
+                status: 200,
+              }),
+            );
+
+          const urlPromise = getWorkflowRunActiveJobUrlRetry(123456, 200);
+          vi.advanceTimersByTime(400);
+          await vi.advanceTimersByTimeAsync(400);
+
+          const url = await urlPromise;
+          expect(url).toStrictEqual("Unable to fetch URL");
+        });
+
+        it("should return a URL if an in_progress job is found", async () => {
+          vi.spyOn(
+            mockOctokit.rest.actions,
+            "listJobsForWorkflowRun",
+          ).mockImplementation(() =>
+            Promise.resolve({
+              data: inProgressMockData,
+              status: 200,
+            }),
+          );
+
+          const urlPromise = getWorkflowRunActiveJobUrlRetry(123456, 200);
+          vi.advanceTimersByTime(400);
+          await vi.advanceTimersByTimeAsync(400);
+
+          const url = await urlPromise;
+          expect(url).toStrictEqual(inProgressMockData.jobs[0]?.html_url);
+        });
       });
     });
   });

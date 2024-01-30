@@ -180,29 +180,28 @@ export async function getWorkflowRunFailedJobs(
 
 export async function getWorkflowRunActiveJobUrl(
   runId: number,
-): Promise<string> {
+): Promise<string | undefined> {
   try {
     const response = await getWorkflowRunJobs(runId);
     const fetchedInProgressJobs = response.data.jobs.filter(
-      (job) => job.status === "in_progress",
+      (job) => job.status === "in_progress" || job.status === "completed",
     );
-
-    if (fetchedInProgressJobs.length <= 0) {
-      core.warning(`Failed to find in_progress Jobs for Workflow Run ${runId}`);
-      return "Unable to fetch URL";
-    }
 
     core.debug(
       `Fetched Jobs for Run:\n` +
         `  Repository: ${config.owner}/${config.repo}\n` +
         `  Run ID: ${config.runId}\n` +
-        `  Jobs (in_progress): [${fetchedInProgressJobs.map(
-          (job) => job.name,
+        `  Jobs: [${fetchedInProgressJobs.map(
+          (job) => `${job.name} (${job.status})`,
         )}]`,
     );
 
+    if (fetchedInProgressJobs.length <= 0) {
+      return undefined;
+    }
+
     return (
-      fetchedInProgressJobs[0]?.html_url ?? "GitHub failed to return the URL"
+      fetchedInProgressJobs[0]?.html_url || "GitHub failed to return the URL"
     );
   } catch (error) {
     if (error instanceof Error) {
@@ -214,4 +213,29 @@ export async function getWorkflowRunActiveJobUrl(
     }
     throw error;
   }
+}
+
+export async function getWorkflowRunActiveJobUrlRetry(
+  runId: number,
+  timeout: number,
+): Promise<string> {
+  const startTime = Date.now();
+  let elapsedTime = Date.now() - startTime;
+
+  while (elapsedTime < timeout) {
+    elapsedTime = Date.now() - startTime;
+    core.debug(
+      `No 'in_progress' or 'completed' Jobs found for Workflow Run ${runId}, retrying...`,
+    );
+
+    const url = await getWorkflowRunActiveJobUrl(runId);
+    if (url) {
+      return url;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  core.debug(`Timed out while trying to fetch URL for Workflow Run ${runId}`);
+
+  return "Unable to fetch URL";
 }
