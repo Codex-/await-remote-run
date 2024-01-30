@@ -1,6 +1,14 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type MockInstance,
+} from "vitest";
 
 import {
   getWorkflowRunActiveJobUrl,
@@ -8,6 +16,7 @@ import {
   getWorkflowRunFailedJobs,
   getWorkflowRunState,
   init,
+  retryOnError,
 } from "./api.ts";
 
 vi.mock("@actions/core");
@@ -359,6 +368,75 @@ describe("API", () => {
           expect(url).toStrictEqual(inProgressMockData.jobs[0]?.html_url);
         });
       });
+    });
+  });
+
+  describe("retryOnError", () => {
+    let warningLogSpy: MockInstance<
+      [
+        message: string | Error,
+        properties?: core.AnnotationProperties | undefined,
+      ],
+      void
+    >;
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      warningLogSpy = vi.spyOn(core, "warning");
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      warningLogSpy.mockRestore();
+    });
+
+    it("should retry a function if it throws an error", async () => {
+      const funcName = "testFunc";
+      const errorMsg = "some error";
+      const testFunc = vi
+        .fn()
+        .mockImplementation(async () => "completed")
+        .mockImplementationOnce(async () => {
+          throw new Error(errorMsg);
+        });
+
+      const retryPromise = retryOnError(() => testFunc(), funcName);
+
+      // Progress timers to first failure
+      vi.advanceTimersByTime(500);
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(warningLogSpy).toHaveBeenCalledOnce();
+      expect(warningLogSpy).toHaveBeenCalledWith(
+        "retryOnError: An unexpected error has occurred:\n" +
+          `  name: ${funcName}\n` +
+          `  error: ${errorMsg}`,
+      );
+
+      // Progress timers to second success
+      vi.advanceTimersByTime(500);
+      await vi.advanceTimersByTimeAsync(500);
+      const result = await retryPromise;
+
+      expect(warningLogSpy).toHaveBeenCalledOnce();
+      expect(result).toStrictEqual("completed");
+    });
+
+    it("should throw the original error if timed out while calling the function", async () => {
+      const funcName = "testFunc";
+      const errorMsg = "some error";
+      const testFunc = vi.fn().mockImplementation(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        throw new Error(errorMsg);
+      });
+
+      const retryPromise = retryOnError(() => testFunc(), funcName, 500);
+
+      vi.advanceTimersByTime(500);
+      // eslint-disable-next-line @typescript-eslint/no-floating-promises
+      vi.advanceTimersByTimeAsync(500);
+
+      await expect(retryPromise).rejects.toThrowError("some error");
     });
   });
 });

@@ -239,3 +239,35 @@ export async function getWorkflowRunActiveJobUrlRetry(
 
   return "Unable to fetch URL";
 }
+
+export async function retryOnError<T>(
+  func: () => Promise<T>,
+  name: string,
+  timeout: number = 5000,
+): Promise<T> {
+  const startTime = Date.now();
+  let elapsedTime = Date.now() - startTime;
+
+  while (elapsedTime < timeout) {
+    elapsedTime = Date.now() - startTime;
+    try {
+      return await func();
+    } catch (error) {
+      if (error instanceof Error) {
+        // We now exceed the time, so throw the error up
+        if (Date.now() - startTime >= timeout) {
+          throw error;
+        }
+
+        core.warning(
+          "retryOnError: An unexpected error has occurred:\n" +
+            `  name: ${name}\n` +
+            `  error: ${error.message}`,
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
+
+  throw new Error(`Timeout exceeded while attempting to retry ${name}`);
+}
