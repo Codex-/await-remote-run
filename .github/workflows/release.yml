@@ -5,6 +5,9 @@ on:
       - v1.*
       - v2.*
 
+permissions:
+  contents: write
+
 jobs:
   release:
     env:
@@ -33,3 +36,5 @@ jobs:
             exit 1
           fi
       - run: pnpm exec changelogithub
+        env:
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
