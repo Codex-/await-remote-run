@@ -44,6 +44,7 @@ export async function getWorkflowRunState(
       run_id: runId,
     });
 
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     if (response.status !== 200) {
       throw new Error(
         `Failed to get Workflow Run state, expected 200 but received ${response.status}`,
@@ -106,6 +107,7 @@ async function getWorkflowRunJobs(
     filter: "latest",
   });
 
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   if (response.status !== 200) {
     throw new Error(
       `Failed to get Jobs for Workflow Run, expected 200 but received ${response.status}`,
@@ -142,16 +144,17 @@ export async function getWorkflowRunFailedJobs(
         name: job.name,
         status: job.status,
         conclusion: job.conclusion,
-        steps: steps || [],
+        steps: steps ?? [],
         url: job.html_url,
       };
     });
 
+    const runJobs = jobs.map((job) => job.name);
     core.debug(
       `Fetched Jobs for Run:\n` +
         `  Repository: ${config.owner}/${config.repo}\n` +
         `  Run ID: ${config.runId}\n` +
-        `  Jobs: [${jobs.map((job) => job.name)}]`,
+        `  Jobs: [${runJobs.join(", ")}]`,
     );
 
     for (const job of jobs) {
@@ -161,7 +164,7 @@ export async function getWorkflowRunFailedJobs(
           `    ID: ${job.id}\n` +
           `    Status: ${job.status}\n` +
           `    Conclusion: ${job.conclusion}\n` +
-          `    Steps: [${steps}]`,
+          `    Steps: [${steps.join(", ")}]`,
       );
     }
 
@@ -187,13 +190,14 @@ export async function getWorkflowRunActiveJobUrl(
       (job) => job.status === "in_progress" || job.status === "completed",
     );
 
+    const inProgressJobs = fetchedInProgressJobs.map(
+      (job) => `${job.name} (${job.status})`,
+    );
     core.debug(
       `Fetched Jobs for Run:\n` +
         `  Repository: ${config.owner}/${config.repo}\n` +
         `  Run ID: ${config.runId}\n` +
-        `  Jobs: [${fetchedInProgressJobs.map(
-          (job) => `${job.name} (${job.status})`,
-        )}]`,
+        `  Jobs: [${inProgressJobs.join(", ")}]`,
     );
 
     if (fetchedInProgressJobs.length <= 0) {
@@ -201,7 +205,7 @@ export async function getWorkflowRunActiveJobUrl(
     }
 
     return (
-      fetchedInProgressJobs[0]?.html_url || "GitHub failed to return the URL"
+      fetchedInProgressJobs[0]?.html_url ?? "GitHub failed to return the URL"
     );
   } catch (error) {
     if (error instanceof Error) {
@@ -243,7 +247,7 @@ export async function getWorkflowRunActiveJobUrlRetry(
 export async function retryOnError<T>(
   func: () => Promise<T>,
   name: string,
-  timeout: number = 5000,
+  timeout = 5000,
 ): Promise<T> {
   const startTime = Date.now();
   let elapsedTime = Date.now() - startTime;
