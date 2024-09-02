@@ -12,7 +12,7 @@
     "build:types": "tsc",
     "format:check": "prettier --check **/*.ts",
     "format": "pnpm run format:check --write",
-    "lint": "eslint --ext \".js,.ts\" .",
+    "lint": "eslint",
     "lint:fix": "pnpm run lint --fix",
     "release": "release-it",
     "test": "vitest",
@@ -32,6 +32,10 @@
     "@actions/github": "^6.0.0"
   },
   "devDependencies": {
+    "@eslint/compat": "^1.1.1",
+    "@eslint/eslintrc": "^3.1.0",
+    "@eslint/js": "^9.9.1",
+    "@types/eslint__js": "^8.42.3",
     "@types/node": "^20.16.2",
     "@typescript-eslint/eslint-plugin": "^8.4.0",
     "@typescript-eslint/parser": "^8.4.0",
@@ -40,12 +44,12 @@
     "changelogithub": "^0.13.10",
     "esbuild": "^0.23.1",
     "eslint": "^9.9.1",
-    "eslint-config-airbnb-typescript": "^18.0.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-github": "^5.0.1",
     "eslint-plugin-import": "^2.29.1",
     "prettier": "3.3.3",
     "typescript": "^5.5.4",
+    "typescript-eslint": "^8.4.0",
     "vitest": "^1.6.0"
   }
 }
