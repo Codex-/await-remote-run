@@ -47,10 +47,10 @@ export function getConfig(): ActionConfig {
     owner: core.getInput("owner", { required: true }),
     runId: getRunIdFromValue(core.getInput("run_id")),
     runTimeoutSeconds:
-      getNumberFromValue(core.getInput("run_timeout_seconds")) ||
+      getNumberFromValue(core.getInput("run_timeout_seconds")) ??
       RUN_TIMEOUT_SECONDS,
     pollIntervalMs:
-      getNumberFromValue(core.getInput("poll_interval_ms")) || POLL_INTERVAL_MS,
+      getNumberFromValue(core.getInput("poll_interval_ms")) ?? POLL_INTERVAL_MS,
   };
 }
 

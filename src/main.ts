@@ -110,4 +110,4 @@ async function run(): Promise<void> {
   }
 }
 
-(() => run())();
+((): Promise<void> => run())();

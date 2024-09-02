@@ -30,10 +30,10 @@ interface MockResponse {
 const mockOctokit = {
   rest: {
     actions: {
-      getWorkflowRun: async (_req?: any): Promise<MockResponse> => {
+      getWorkflowRun: (_req?: any): Promise<MockResponse> => {
         throw new Error("Should be mocked");
       },
-      listJobsForWorkflowRun: async (_req?: any): Promise<MockResponse> => {
+      listJobsForWorkflowRun: (_req?: any): Promise<MockResponse> => {
         throw new Error("Should be mocked");
       },
     },
@@ -53,6 +53,7 @@ describe("API", () => {
 
   beforeEach(() => {
     vi.spyOn(core, "getInput").mockReturnValue("");
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
     vi.spyOn(github, "getOctokit").mockReturnValue(mockOctokit as any);
     init(cfg);
   });
@@ -394,11 +395,9 @@ describe("API", () => {
       const funcName = "testFunc";
       const errorMsg = "some error";
       const testFunc = vi
-        .fn()
-        .mockImplementation(async () => "completed")
-        .mockImplementationOnce(async () => {
-          throw new Error(errorMsg);
-        });
+        .fn<[], Promise<string>>()
+        .mockImplementation(() => Promise.resolve("completed"))
+        .mockImplementationOnce(() => Promise.reject(Error(errorMsg)));
 
       const retryPromise = retryOnError(() => testFunc(), funcName);
 
@@ -425,10 +424,12 @@ describe("API", () => {
     it("should throw the original error if timed out while calling the function", async () => {
       const funcName = "testFunc";
       const errorMsg = "some error";
-      const testFunc = vi.fn().mockImplementation(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        throw new Error(errorMsg);
-      });
+      const testFunc = vi
+        .fn<[], Promise<string>>()
+        .mockImplementation(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          throw new Error(errorMsg);
+        });
 
       const retryPromise = retryOnError(() => testFunc(), funcName, 500);
 
