@@ -373,13 +373,7 @@ describe("API", () => {
   });
 
   describe("retryOnError", () => {
-    let warningLogSpy: MockInstance<
-      [
-        message: string | Error,
-        properties?: core.AnnotationProperties | undefined,
-      ],
-      void
-    >;
+    let warningLogSpy: MockInstance<typeof console.warn>;
 
     beforeEach(() => {
       vi.useFakeTimers();
@@ -395,7 +389,7 @@ describe("API", () => {
       const funcName = "testFunc";
       const errorMsg = "some error";
       const testFunc = vi
-        .fn<[], Promise<string>>()
+        .fn<() => Promise<string>>()
         .mockImplementation(() => Promise.resolve("completed"))
         .mockImplementationOnce(() => Promise.reject(Error(errorMsg)));
 
@@ -425,7 +419,7 @@ describe("API", () => {
       const funcName = "testFunc";
       const errorMsg = "some error";
       const testFunc = vi
-        .fn<[], Promise<string>>()
+        .fn<() => Promise<string>>()
         .mockImplementation(async () => {
           await new Promise((resolve) => setTimeout(resolve, 1000));
           throw new Error(errorMsg);
