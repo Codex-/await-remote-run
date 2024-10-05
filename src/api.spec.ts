@@ -11,10 +11,10 @@ import {
 } from "vitest";
 
 import {
-  getWorkflowRunActiveJobUrl,
-  getWorkflowRunActiveJobUrlRetry,
-  getWorkflowRunFailedJobs,
-  getWorkflowRunState,
+  fetchWorkflowRunActiveJobUrl,
+  fetchWorkflowRunActiveJobUrlRetry,
+  fetchWorkflowRunFailedJobs,
+  fetchWorkflowRunState,
   init,
   retryOnError,
 } from "./api.ts";
@@ -68,7 +68,7 @@ describe("API", () => {
     vi.restoreAllMocks();
   });
 
-  describe("getWorkflowRunState", () => {
+  describe("fetchWorkflowRunState", () => {
     it("should return the workflow run state for a given run ID", async () => {
       const mockData = {
         status: "completed",
@@ -82,7 +82,7 @@ describe("API", () => {
         }),
       );
 
-      const state = await getWorkflowRunState(123456);
+      const state = await fetchWorkflowRunState(123456);
       expect(state.conclusion).toStrictEqual(mockData.conclusion);
       expect(state.status).toStrictEqual(mockData.status);
     });
@@ -97,8 +97,8 @@ describe("API", () => {
         }),
       );
 
-      await expect(getWorkflowRunState(0)).rejects.toThrow(
-        `Failed to get Workflow Run state, expected 200 but received ${errorStatus}`,
+      await expect(fetchWorkflowRunState(0)).rejects.toThrow(
+        `Failed to fetch Workflow Run state, expected 200 but received ${errorStatus}`,
       );
     });
 
@@ -192,7 +192,7 @@ describe("API", () => {
     });
   });
 
-  describe("getWorkflowRunJobs", () => {
+  describe("fetchWorkflowRunJobs", () => {
     const mockData = {
       total_count: 1,
       jobs: [
@@ -220,7 +220,7 @@ describe("API", () => {
       ],
     };
 
-    describe("getWorkflowRunFailedJobs", () => {
+    describe("fetchWorkflowRunFailedJobs", () => {
       it("should return the jobs for a failed workflow run given a run ID", async () => {
         vi.spyOn(
           mockOctokit.rest.actions,
@@ -233,7 +233,7 @@ describe("API", () => {
           }),
         );
 
-        const jobs = await getWorkflowRunFailedJobs(123456);
+        const jobs = await fetchWorkflowRunFailedJobs(123456);
         expect(jobs).toHaveLength(1);
         expect(jobs[0]?.id).toStrictEqual(mockData.jobs[0]?.id);
         expect(jobs[0]?.name).toStrictEqual(mockData.jobs[0]?.name);
@@ -256,8 +256,8 @@ describe("API", () => {
           }),
         );
 
-        await expect(getWorkflowRunFailedJobs(0)).rejects.toThrow(
-          `Failed to get Jobs for Workflow Run, expected 200 but received ${errorStatus}`,
+        await expect(fetchWorkflowRunFailedJobs(0)).rejects.toThrow(
+          `Failed to fetch Jobs for Workflow Run, expected 200 but received ${errorStatus}`,
         );
       });
 
@@ -274,7 +274,7 @@ describe("API", () => {
           }),
         );
 
-        const { steps } = (await getWorkflowRunFailedJobs(123456))[0]!;
+        const { steps } = (await fetchWorkflowRunFailedJobs(123456))[0]!;
         expect(steps).toHaveLength(mockData.jobs[0]!.steps.length);
         for (let i = 0; i < mockSteps.length; i++) {
           expect(steps[i]?.name).toStrictEqual(mockSteps[i]?.name);
@@ -285,7 +285,7 @@ describe("API", () => {
       });
     });
 
-    describe("getWorkflowRunActiveJobUrl", () => {
+    describe("fetchWorkflowRunActiveJobUrl", () => {
       let inProgressMockData: any;
 
       beforeEach(() => {
@@ -313,7 +313,7 @@ describe("API", () => {
           }),
         );
 
-        const url = await getWorkflowRunActiveJobUrl(123456);
+        const url = await fetchWorkflowRunActiveJobUrl(123456);
         expect(url).toStrictEqual(mockData.jobs[0]?.html_url);
       });
 
@@ -331,7 +331,7 @@ describe("API", () => {
           }),
         );
 
-        const url = await getWorkflowRunActiveJobUrl(123456);
+        const url = await fetchWorkflowRunActiveJobUrl(123456);
         expect(url).toStrictEqual(mockData.jobs[0]?.html_url);
       });
 
@@ -348,8 +348,8 @@ describe("API", () => {
           }),
         );
 
-        await expect(getWorkflowRunActiveJobUrl(0)).rejects.toThrow(
-          `Failed to get Jobs for Workflow Run, expected 200 but received ${errorStatus}`,
+        await expect(fetchWorkflowRunActiveJobUrl(0)).rejects.toThrow(
+          `Failed to fetch Jobs for Workflow Run, expected 200 but received ${errorStatus}`,
         );
       });
 
@@ -367,7 +367,7 @@ describe("API", () => {
           }),
         );
 
-        const url = await getWorkflowRunActiveJobUrl(123456);
+        const url = await fetchWorkflowRunActiveJobUrl(123456);
         expect(url).toStrictEqual(undefined);
       });
 
@@ -385,11 +385,11 @@ describe("API", () => {
           }),
         );
 
-        const url = await getWorkflowRunActiveJobUrl(123456);
+        const url = await fetchWorkflowRunActiveJobUrl(123456);
         expect(url).toStrictEqual("GitHub failed to return the URL");
       });
 
-      describe("getWorkflowRunActiveJobUrlRetry", () => {
+      describe("fetchWorkflowRunActiveJobUrlRetry", () => {
         beforeEach(() => {
           vi.useFakeTimers();
         });
@@ -412,7 +412,7 @@ describe("API", () => {
             }),
           );
 
-          const urlPromise = getWorkflowRunActiveJobUrlRetry(123456, 100);
+          const urlPromise = fetchWorkflowRunActiveJobUrlRetry(123456, 100);
           vi.advanceTimersByTime(400);
           await vi.advanceTimersByTimeAsync(400);
 
@@ -451,7 +451,7 @@ describe("API", () => {
               }),
             );
 
-          const urlPromise = getWorkflowRunActiveJobUrlRetry(123456, 200);
+          const urlPromise = fetchWorkflowRunActiveJobUrlRetry(123456, 200);
           vi.advanceTimersByTime(400);
           await vi.advanceTimersByTimeAsync(400);
 
@@ -471,7 +471,7 @@ describe("API", () => {
             }),
           );
 
-          const urlPromise = getWorkflowRunActiveJobUrlRetry(123456, 200);
+          const urlPromise = fetchWorkflowRunActiveJobUrlRetry(123456, 200);
           vi.advanceTimersByTime(400);
           await vi.advanceTimersByTimeAsync(400);
 

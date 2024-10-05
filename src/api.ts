@@ -35,7 +35,7 @@ export interface WorkflowRunState {
   conclusion: WorkflowRunConclusion | null;
 }
 
-export async function getWorkflowRunState(
+export async function fetchWorkflowRunState(
   runId: number,
 ): Promise<WorkflowRunState> {
   try {
@@ -54,7 +54,7 @@ export async function getWorkflowRunState(
 
     if (response.status !== 200) {
       throw new Error(
-        `Failed to get Workflow Run state, expected 200 but received ${response.status}`,
+        `Failed to fetch Workflow Run state, expected 200 but received ${response.status}`,
       );
     }
 
@@ -73,7 +73,7 @@ export async function getWorkflowRunState(
   } catch (error) {
     if (error instanceof Error) {
       core.error(
-        `getWorkflowRunState: An unexpected error has occurred: ${error.message}`,
+        `fetchWorkflowRunState: An unexpected error has occurred: ${error.message}`,
       );
       // eslint-disable-next-line @typescript-eslint/no-unused-expressions
       error.stack && core.debug(error.stack);
@@ -103,7 +103,7 @@ type ListJobsForWorkflowRunResponse = Awaited<
   ReturnType<Octokit["rest"]["actions"]["listJobsForWorkflowRun"]>
 >;
 
-async function getWorkflowRunJobs(
+async function fetchWorkflowRunJobs(
   runId: number,
 ): Promise<ListJobsForWorkflowRunResponse> {
   // https://docs.github.com/en/rest/reference/actions#list-jobs-for-a-workflow-run
@@ -117,18 +117,18 @@ async function getWorkflowRunJobs(
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   if (response.status !== 200) {
     throw new Error(
-      `Failed to get Jobs for Workflow Run, expected 200 but received ${response.status}`,
+      `Failed to fetch Jobs for Workflow Run, expected 200 but received ${response.status}`,
     );
   }
 
   return response;
 }
 
-export async function getWorkflowRunFailedJobs(
+export async function fetchWorkflowRunFailedJobs(
   runId: number,
 ): Promise<WorkflowRunJob[]> {
   try {
-    const response = await getWorkflowRunJobs(runId);
+    const response = await fetchWorkflowRunJobs(runId);
     const fetchedFailedJobs = response.data.jobs.filter(
       (job) => job.conclusion === "failure",
     );
@@ -179,7 +179,7 @@ export async function getWorkflowRunFailedJobs(
   } catch (error) {
     if (error instanceof Error) {
       core.error(
-        `getWorkflowRunJobFailures: An unexpected error has occurred: ${error.message}`,
+        `fetchWorkflowRunFailedJobs: An unexpected error has occurred: ${error.message}`,
       );
       // eslint-disable-next-line @typescript-eslint/no-unused-expressions
       error.stack && core.debug(error.stack);
@@ -188,11 +188,11 @@ export async function getWorkflowRunFailedJobs(
   }
 }
 
-export async function getWorkflowRunActiveJobUrl(
+export async function fetchWorkflowRunActiveJobUrl(
   runId: number,
 ): Promise<string | undefined> {
   try {
-    const response = await getWorkflowRunJobs(runId);
+    const response = await fetchWorkflowRunJobs(runId);
     const fetchedInProgressJobs = response.data.jobs.filter(
       (job) => job.status === "in_progress" || job.status === "completed",
     );
@@ -217,7 +217,7 @@ export async function getWorkflowRunActiveJobUrl(
   } catch (error) {
     if (error instanceof Error) {
       core.error(
-        `getWorkflowRunActiveJobUrl: An unexpected error has occurred: ${error.message}`,
+        `fetchWorkflowRunActiveJobUrl: An unexpected error has occurred: ${error.message}`,
       );
       // eslint-disable-next-line @typescript-eslint/no-unused-expressions
       error.stack && core.debug(error.stack);
@@ -226,7 +226,7 @@ export async function getWorkflowRunActiveJobUrl(
   }
 }
 
-export async function getWorkflowRunActiveJobUrlRetry(
+export async function fetchWorkflowRunActiveJobUrlRetry(
   runId: number,
   timeout: number,
 ): Promise<string> {
@@ -239,7 +239,7 @@ export async function getWorkflowRunActiveJobUrlRetry(
       `No 'in_progress' or 'completed' Jobs found for Workflow Run ${runId}, retrying...`,
     );
 
-    const url = await getWorkflowRunActiveJobUrl(runId);
+    const url = await fetchWorkflowRunActiveJobUrl(runId);
     if (url) {
       return url;
     }

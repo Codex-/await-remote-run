@@ -2,15 +2,15 @@ import * as core from "@actions/core";
 
 import { type ActionConfig } from "./action.ts";
 import {
-  getWorkflowRunFailedJobs,
-  getWorkflowRunState,
+  fetchWorkflowRunFailedJobs,
+  fetchWorkflowRunState,
   retryOnError,
   WorkflowRunConclusion,
   WorkflowRunStatus,
 } from "./api.ts";
 
 async function logFailureDetails(runId: number): Promise<void> {
-  const failedJobs = await getWorkflowRunFailedJobs(runId);
+  const failedJobs = await fetchWorkflowRunFailedJobs(runId);
   for (const failedJob of failedJobs) {
     const failedSteps = failedJob.steps
       .filter((step) => step.conclusion !== "success")
@@ -49,8 +49,8 @@ export async function run({ config, startTime }: RunOpts): Promise<void> {
       elapsedTime = Date.now() - startTime;
 
       const { status, conclusion } = await retryOnError(
-        async () => getWorkflowRunState(config.runId),
-        "getWorkflowRunState",
+        async () => fetchWorkflowRunState(config.runId),
+        "fetchWorkflowRunState",
         400,
       );
 
