@@ -1,5 +1,6 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
+
 import { type ActionConfig, getConfig } from "./action.ts";
 
 type Octokit = ReturnType<(typeof github)["getOctokit"]>;
