@@ -39,65 +39,52 @@ interface RunOpts {
   startTime: number;
 }
 export async function run({ config, startTime }: RunOpts): Promise<void> {
-  try {
-    const timeoutMs = config.runTimeoutSeconds * 1000;
+  const timeoutMs = config.runTimeoutSeconds * 1000;
 
-    let attemptNo = 0;
-    let elapsedTime = Date.now() - startTime;
-    while (elapsedTime < timeoutMs) {
-      attemptNo++;
-      elapsedTime = Date.now() - startTime;
+  let attemptNo = 0;
+  let elapsedTime = Date.now() - startTime;
+  while (elapsedTime < timeoutMs) {
+    attemptNo++;
+    elapsedTime = Date.now() - startTime;
 
-      const { status, conclusion } = await retryOnError(
-        async () => fetchWorkflowRunState(config.runId),
-        "fetchWorkflowRunState",
-        400,
-      );
-
-      if (status === WorkflowRunStatus.Completed) {
-        switch (conclusion) {
-          case WorkflowRunConclusion.Success:
-            core.info(
-              "Run Completed:\n" +
-                `  Run ID: ${config.runId}\n` +
-                `  Status: ${status}\n` +
-                `  Conclusion: ${conclusion}`,
-            );
-            return;
-          case WorkflowRunConclusion.ActionRequired:
-          case WorkflowRunConclusion.Cancelled:
-          case WorkflowRunConclusion.Failure:
-          case WorkflowRunConclusion.Neutral:
-          case WorkflowRunConclusion.Skipped:
-          case WorkflowRunConclusion.TimedOut:
-            core.error(`Run has failed with conclusion: ${conclusion}`);
-            await logFailureDetails(config.runId);
-            core.setFailed(conclusion);
-            return;
-          default:
-            core.setFailed(`Unknown conclusion: ${conclusion}`);
-            return;
-        }
-      }
-
-      core.debug(`Run has not concluded, attempt ${attemptNo}...`);
-
-      await new Promise((resolve) =>
-        setTimeout(resolve, config.pollIntervalMs),
-      );
-    }
-
-    throw new Error(
-      `Timeout exceeded while awaiting completion of Run ${config.runId}`,
+    const { status, conclusion } = await retryOnError(
+      async () => fetchWorkflowRunState(config.runId),
+      "fetchWorkflowRunState",
+      400,
     );
-  } catch (error) {
-    if (error instanceof Error) {
-      core.error(`Failed to complete: ${error.message}`);
-      if (!error.message.includes("Timeout")) {
-        core.warning("Does the token have the correct permissions?");
+
+    if (status === WorkflowRunStatus.Completed) {
+      switch (conclusion) {
+        case WorkflowRunConclusion.Success:
+          core.info(
+            "Run Completed:\n" +
+              `  Run ID: ${config.runId}\n` +
+              `  Status: ${status}\n` +
+              `  Conclusion: ${conclusion}`,
+          );
+          return;
+        case WorkflowRunConclusion.ActionRequired:
+        case WorkflowRunConclusion.Cancelled:
+        case WorkflowRunConclusion.Failure:
+        case WorkflowRunConclusion.Neutral:
+        case WorkflowRunConclusion.Skipped:
+        case WorkflowRunConclusion.TimedOut:
+          core.error(`Run has failed with conclusion: ${conclusion}`);
+          await logFailureDetails(config.runId);
+          core.setFailed(conclusion);
+          return;
+        default:
+          core.setFailed(`Unknown conclusion: ${conclusion}`);
+          return;
       }
-      core.debug(error.stack ?? "");
-      core.setFailed(error.message);
     }
+
+    core.debug(`Run has not concluded, attempt ${attemptNo}...`);
+
+    await new Promise((resolve) => setTimeout(resolve, config.pollIntervalMs));
   }
+
+  throw new Error(
+    `Timeout exceeded while awaiting completion of Run ${config.runId}`,
+  );
 }
