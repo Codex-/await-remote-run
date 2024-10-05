@@ -36,7 +36,7 @@ async function logFailureDetails(runId: number): Promise<void> {
   }
 }
 
-async function run(): Promise<void> {
+export async function run(): Promise<void> {
   try {
     const config = getConfig();
     const startTime = Date.now();
@@ -110,5 +110,3 @@ async function run(): Promise<void> {
     }
   }
 }
-
-((): Promise<void> => run())();
