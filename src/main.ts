@@ -6,22 +6,33 @@ import { run } from "./await-remote-run.ts";
 import * as constants from "./constants.ts";
 
 async function main(): Promise<void> {
-  const startTime = Date.now();
+  try {
+    const startTime = Date.now();
 
-  const config = getConfig();
-  api.init(config);
+    const config = getConfig();
+    api.init(config);
 
-  const activeJobUrl = await api.fetchWorkflowRunActiveJobUrlRetry(
-    config.runId,
-    constants.WORKFLOW_RUN_ACTIVE_JOB_TIMEOUT_MS,
-  );
-  core.info(
-    `Awaiting completion of Workflow Run ${config.runId}...\n` +
-      `  ID: ${config.runId}\n` +
-      `  URL: ${activeJobUrl}`,
-  );
+    const activeJobUrl = await api.fetchWorkflowRunActiveJobUrlRetry(
+      config.runId,
+      constants.WORKFLOW_RUN_ACTIVE_JOB_TIMEOUT_MS,
+    );
+    core.info(
+      `Awaiting completion of Workflow Run ${config.runId}...\n` +
+        `  ID: ${config.runId}\n` +
+        `  URL: ${activeJobUrl}`,
+    );
 
-  await run({ config, startTime });
+    await run({ config, startTime });
+  } catch (error) {
+    if (error instanceof Error) {
+      core.error(`Failed to complete: ${error.message}`);
+      if (!error.message.includes("Timeout")) {
+        core.warning("Does the token have the correct permissions?");
+      }
+      core.debug(error.stack ?? "");
+      core.setFailed(error.message);
+    }
+  }
 }
 
 if (!process.env.VITEST) {
