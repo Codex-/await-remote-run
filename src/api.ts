@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unnecessary-condition */
+
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 
@@ -75,8 +77,7 @@ export async function fetchWorkflowRunState(
       core.error(
         `fetchWorkflowRunState: An unexpected error has occurred: ${error.message}`,
       );
-      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-      error.stack && core.debug(error.stack);
+      core.debug(error.stack ?? "");
     }
     throw error;
   }
@@ -114,7 +115,6 @@ async function fetchWorkflowRunJobs(
     filter: "latest",
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   if (response.status !== 200) {
     throw new Error(
       `Failed to fetch Jobs for Workflow Run, expected 200 but received ${response.status}`,
@@ -181,8 +181,7 @@ export async function fetchWorkflowRunFailedJobs(
       core.error(
         `fetchWorkflowRunFailedJobs: An unexpected error has occurred: ${error.message}`,
       );
-      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-      error.stack && core.debug(error.stack);
+      core.debug(error.stack ?? "");
     }
     throw error;
   }
@@ -219,8 +218,7 @@ export async function fetchWorkflowRunActiveJobUrl(
       core.error(
         `fetchWorkflowRunActiveJobUrl: An unexpected error has occurred: ${error.message}`,
       );
-      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-      error.stack && core.debug(error.stack);
+      core.debug(error.stack ?? "");
     }
     throw error;
   }
