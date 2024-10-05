@@ -11,7 +11,7 @@ async function main(): Promise<void> {
   const config = getConfig();
   api.init(config);
 
-  const activeJobUrl = await api.getWorkflowRunActiveJobUrlRetry(
+  const activeJobUrl = await api.fetchWorkflowRunActiveJobUrlRetry(
     config.runId,
     constants.WORKFLOW_RUN_ACTIVE_JOB_TIMEOUT_MS,
   );
