@@ -1,11 +1,9 @@
 import * as core from "@actions/core";
 
-import { getConfig } from "./action.ts";
+import { type ActionConfig } from "./action.ts";
 import {
-  getWorkflowRunActiveJobUrlRetry,
   getWorkflowRunFailedJobs,
   getWorkflowRunState,
-  init,
   retryOnError,
   WorkflowRunConclusion,
   WorkflowRunStatus,
@@ -36,22 +34,16 @@ async function logFailureDetails(runId: number): Promise<void> {
   }
 }
 
-export async function run(): Promise<void> {
+interface RunOpts {
+  config: ActionConfig;
+  startTime: number;
+}
+export async function run({ config, startTime }: RunOpts): Promise<void> {
   try {
-    const config = getConfig();
-    const startTime = Date.now();
-    init(config);
-
     const timeoutMs = config.runTimeoutSeconds * 1000;
+
     let attemptNo = 0;
     let elapsedTime = Date.now() - startTime;
-
-    core.info(
-      `Awaiting completion of Workflow Run ${config.runId}...\n` +
-        `  ID: ${config.runId}\n` +
-        `  URL: ${await getWorkflowRunActiveJobUrlRetry(config.runId, 1000)}`,
-    );
-
     while (elapsedTime < timeoutMs) {
       attemptNo++;
       elapsedTime = Date.now() - startTime;
