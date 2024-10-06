@@ -42,7 +42,7 @@ export async function fetchWorkflowRunState(
   runId: number,
 ): Promise<WorkflowRunState> {
   try {
-    // https://docs.github.com/en/rest/reference/actions#get-a-workflow-run
+    // https://docs.github.com/en/rest/actions/workflow-runs#get-a-workflow-run
     const response = await octokit.rest.actions.getWorkflowRun({
       owner: config.owner,
       repo: config.repo,
@@ -102,7 +102,7 @@ type ListJobsForWorkflowRunResponse = Awaited<
 async function fetchWorkflowRunJobs(
   runId: number,
 ): Promise<ListJobsForWorkflowRunResponse> {
-  // https://docs.github.com/en/rest/reference/actions#list-jobs-for-a-workflow-run
+  // https://docs.github.com/en/rest/actions/workflow-jobs#list-jobs-for-a-workflow-run
   const response = await octokit.rest.actions.listJobsForWorkflowRun({
     owner: config.owner,
     repo: config.repo,
