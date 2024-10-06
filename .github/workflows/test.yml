@@ -39,3 +39,16 @@ jobs:
         uses: codecov/codecov-action@v4
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+  knip-report:
+    if: ${{ github.event_name == 'pull_request' }}
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: asdf-vm/actions/install@v3
+      - run: pnpm i
+      - uses: codex-/knip-reporter@v2

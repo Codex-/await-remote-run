@@ -1,23 +1,24 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 import {
+  afterAll,
   afterEach,
   beforeEach,
   describe,
   expect,
   it,
   vi,
-  type MockInstance,
 } from "vitest";
 
 import {
-  getWorkflowRunActiveJobUrl,
-  getWorkflowRunActiveJobUrlRetry,
-  getWorkflowRunFailedJobs,
-  getWorkflowRunState,
+  fetchWorkflowRunActiveJobUrl,
+  fetchWorkflowRunActiveJobUrlRetry,
+  fetchWorkflowRunFailedJobs,
+  fetchWorkflowRunState,
   init,
   retryOnError,
 } from "./api.ts";
+import { mockLoggingFunctions } from "./test-utils/logging.mock.ts";
 
 vi.mock("@actions/core");
 vi.mock("@actions/github");
@@ -51,6 +52,13 @@ describe("API", () => {
     pollIntervalMs: 2500,
   };
 
+  const { coreWarningLogMock, assertOnlyCalled, assertNoneCalled } =
+    mockLoggingFunctions();
+
+  afterAll(() => {
+    vi.restoreAllMocks();
+  });
+
   beforeEach(() => {
     vi.spyOn(core, "getInput").mockReturnValue("");
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
@@ -59,10 +67,10 @@ describe("API", () => {
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    vi.resetAllMocks();
   });
 
-  describe("getWorkflowRunState", () => {
+  describe("fetchWorkflowRunState", () => {
     it("should return the workflow run state for a given run ID", async () => {
       const mockData = {
         status: "completed",
@@ -75,7 +83,7 @@ describe("API", () => {
         }),
       );
 
-      const state = await getWorkflowRunState(123456);
+      const state = await fetchWorkflowRunState(123456);
       expect(state.conclusion).toStrictEqual(mockData.conclusion);
       expect(state.status).toStrictEqual(mockData.status);
     });
@@ -89,13 +97,13 @@ describe("API", () => {
         }),
       );
 
-      await expect(getWorkflowRunState(0)).rejects.toThrow(
-        `Failed to get Workflow Run state, expected 200 but received ${errorStatus}`,
+      await expect(fetchWorkflowRunState(0)).rejects.toThrow(
+        `Failed to fetch Workflow Run state, expected 200 but received ${errorStatus}`,
       );
     });
   });
 
-  describe("getWorkflowRunJobs", () => {
+  describe("fetchWorkflowRunJobs", () => {
     const mockData = {
       total_count: 1,
       jobs: [
@@ -123,7 +131,7 @@ describe("API", () => {
       ],
     };
 
-    describe("getWorkflowRunFailedJobs", () => {
+    describe("fetchWorkflowRunFailedJobs", () => {
       it("should return the jobs for a failed workflow run given a run ID", async () => {
         vi.spyOn(
           mockOctokit.rest.actions,
@@ -135,7 +143,7 @@ describe("API", () => {
           }),
         );
 
-        const jobs = await getWorkflowRunFailedJobs(123456);
+        const jobs = await fetchWorkflowRunFailedJobs(123456);
         expect(jobs).toHaveLength(1);
         expect(jobs[0]?.id).toStrictEqual(mockData.jobs[0]?.id);
         expect(jobs[0]?.name).toStrictEqual(mockData.jobs[0]?.name);
@@ -157,8 +165,8 @@ describe("API", () => {
           }),
         );
 
-        await expect(getWorkflowRunFailedJobs(0)).rejects.toThrow(
-          `Failed to get Jobs for Workflow Run, expected 200 but received ${errorStatus}`,
+        await expect(fetchWorkflowRunFailedJobs(0)).rejects.toThrow(
+          `Failed to fetch Jobs for Workflow Run, expected 200 but received ${errorStatus}`,
         );
       });
 
@@ -174,7 +182,7 @@ describe("API", () => {
           }),
         );
 
-        const { steps } = (await getWorkflowRunFailedJobs(123456))[0]!;
+        const { steps } = (await fetchWorkflowRunFailedJobs(123456))[0]!;
         expect(steps).toHaveLength(mockData.jobs[0]!.steps.length);
         for (let i = 0; i < mockSteps.length; i++) {
           expect(steps[i]?.name).toStrictEqual(mockSteps[i]?.name);
@@ -185,7 +193,7 @@ describe("API", () => {
       });
     });
 
-    describe("getWorkflowRunActiveJobUrl", () => {
+    describe("fetchWorkflowRunActiveJobUrl", () => {
       let inProgressMockData: any;
 
       beforeEach(() => {
@@ -212,7 +220,7 @@ describe("API", () => {
           }),
         );
 
-        const url = await getWorkflowRunActiveJobUrl(123456);
+        const url = await fetchWorkflowRunActiveJobUrl(123456);
         expect(url).toStrictEqual(mockData.jobs[0]?.html_url);
       });
 
@@ -229,7 +237,7 @@ describe("API", () => {
           }),
         );
 
-        const url = await getWorkflowRunActiveJobUrl(123456);
+        const url = await fetchWorkflowRunActiveJobUrl(123456);
         expect(url).toStrictEqual(mockData.jobs[0]?.html_url);
       });
 
@@ -245,8 +253,8 @@ describe("API", () => {
           }),
         );
 
-        await expect(getWorkflowRunActiveJobUrl(0)).rejects.toThrow(
-          `Failed to get Jobs for Workflow Run, expected 200 but received ${errorStatus}`,
+        await expect(fetchWorkflowRunActiveJobUrl(0)).rejects.toThrow(
+          `Failed to fetch Jobs for Workflow Run, expected 200 but received ${errorStatus}`,
         );
       });
 
@@ -263,7 +271,7 @@ describe("API", () => {
           }),
         );
 
-        const url = await getWorkflowRunActiveJobUrl(123456);
+        const url = await fetchWorkflowRunActiveJobUrl(123456);
         expect(url).toStrictEqual(undefined);
       });
 
@@ -280,11 +288,11 @@ describe("API", () => {
           }),
         );
 
-        const url = await getWorkflowRunActiveJobUrl(123456);
+        const url = await fetchWorkflowRunActiveJobUrl(123456);
         expect(url).toStrictEqual("GitHub failed to return the URL");
       });
 
-      describe("getWorkflowRunActiveJobUrlRetry", () => {
+      describe("fetchWorkflowRunActiveJobUrlRetry", () => {
         beforeEach(() => {
           vi.useFakeTimers();
         });
@@ -306,7 +314,7 @@ describe("API", () => {
             }),
           );
 
-          const urlPromise = getWorkflowRunActiveJobUrlRetry(123456, 100);
+          const urlPromise = fetchWorkflowRunActiveJobUrlRetry(123456, 100);
           vi.advanceTimersByTime(400);
           await vi.advanceTimersByTimeAsync(400);
 
@@ -342,7 +350,7 @@ describe("API", () => {
               }),
             );
 
-          const urlPromise = getWorkflowRunActiveJobUrlRetry(123456, 200);
+          const urlPromise = fetchWorkflowRunActiveJobUrlRetry(123456, 200);
           vi.advanceTimersByTime(400);
           await vi.advanceTimersByTimeAsync(400);
 
@@ -361,7 +369,7 @@ describe("API", () => {
             }),
           );
 
-          const urlPromise = getWorkflowRunActiveJobUrlRetry(123456, 200);
+          const urlPromise = fetchWorkflowRunActiveJobUrlRetry(123456, 200);
           vi.advanceTimersByTime(400);
           await vi.advanceTimersByTimeAsync(400);
 
@@ -373,50 +381,92 @@ describe("API", () => {
   });
 
   describe("retryOnError", () => {
-    let warningLogSpy: MockInstance<typeof console.warn>;
-
     beforeEach(() => {
       vi.useFakeTimers();
-      warningLogSpy = vi.spyOn(core, "warning");
     });
 
     afterEach(() => {
       vi.useRealTimers();
-      warningLogSpy.mockRestore();
+    });
+
+    it("should return a success result", async () => {
+      const testFunc = vi
+        .fn<() => Promise<string>>()
+        .mockImplementation(() => Promise.resolve("completed"));
+
+      const result = await retryOnError(() => testFunc(), 5000);
+
+      if (!result.success) {
+        expect.fail();
+      }
+
+      expect(result.success).toStrictEqual(true);
+      expect(result.value).toStrictEqual("completed");
+      assertNoneCalled();
     });
 
     it("should retry a function if it throws an error", async () => {
-      const funcName = "testFunc";
       const errorMsg = "some error";
       const testFunc = vi
         .fn<() => Promise<string>>()
         .mockImplementation(() => Promise.resolve("completed"))
         .mockImplementationOnce(() => Promise.reject(Error(errorMsg)));
 
-      const retryPromise = retryOnError(() => testFunc(), funcName);
+      const retryPromise = retryOnError(testFunc, 5000);
 
       // Progress timers to first failure
-      vi.advanceTimersByTime(500);
-      await vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(1000);
 
-      expect(warningLogSpy).toHaveBeenCalledOnce();
-      expect(warningLogSpy).toHaveBeenCalledWith(
-        "retryOnError: An unexpected error has occurred:\n" +
-          `  name: ${funcName}\n` +
-          `  error: ${errorMsg}`,
-      );
+      assertOnlyCalled(coreWarningLogMock);
+      expect(coreWarningLogMock).toHaveBeenCalledOnce();
+      expect(coreWarningLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(`
+        "retryOnError: An unexpected error has occurred:
+          name: spy
+          error: some error"
+      `);
+      expect(coreWarningLogMock.mock.calls[0]?.[0]).toContain(testFunc.name);
+      coreWarningLogMock.mockReset();
 
       // Progress timers to second success
-      vi.advanceTimersByTime(500);
-      await vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(1000);
+
       const result = await retryPromise;
 
-      expect(warningLogSpy).toHaveBeenCalledOnce();
-      expect(result).toStrictEqual("completed");
+      if (!result.success) {
+        expect.fail();
+      }
+
+      assertNoneCalled();
+      expect(result.success).toStrictEqual(true);
+      expect(result.value).toStrictEqual("completed");
     });
 
-    it("should throw the original error if timed out while calling the function", async () => {
-      const funcName = "testFunc";
+    it("should display a fallback function name if none is available", async () => {
+      const errorMsg = "some error";
+      const testFunc = vi
+        .fn<() => Promise<string>>()
+        .mockImplementationOnce(() => Promise.reject(Error(errorMsg)));
+
+      // Use anonymous function
+      const retryPromise = retryOnError(() => testFunc(), 5000);
+
+      // Progress timers to first failure
+      await vi.advanceTimersByTimeAsync(1000);
+
+      assertOnlyCalled(coreWarningLogMock);
+      expect(coreWarningLogMock).toHaveBeenCalledOnce();
+      expect(coreWarningLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(`
+        "retryOnError: An unexpected error has occurred:
+          name: anonymous function
+          error: some error"
+      `);
+      coreWarningLogMock.mockReset();
+
+      // Clean up promise
+      await retryPromise;
+    });
+
+    it("should return a timeout result", async () => {
       const errorMsg = "some error";
       const testFunc = vi
         .fn<() => Promise<string>>()
@@ -425,13 +475,19 @@ describe("API", () => {
           throw new Error(errorMsg);
         });
 
-      const retryPromise = retryOnError(() => testFunc(), funcName, 500);
+      const retryPromise = retryOnError(() => testFunc(), 500);
 
-      vi.advanceTimersByTime(500);
-      // eslint-disable-next-line @typescript-eslint/no-floating-promises
-      vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(2000);
 
-      await expect(retryPromise).rejects.toThrowError("some error");
+      const result = await retryPromise;
+
+      if (result.success) {
+        expect.fail();
+      }
+
+      expect(result.success).toStrictEqual(false);
+      expect(result.reason).toStrictEqual("timeout");
+      assertNoneCalled();
     });
   });
 });

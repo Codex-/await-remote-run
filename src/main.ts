@@ -1,114 +1,40 @@
 import * as core from "@actions/core";
 
 import { getConfig } from "./action.ts";
-import {
-  getWorkflowRunActiveJobUrlRetry,
-  getWorkflowRunFailedJobs,
-  getWorkflowRunState,
-  init,
-  retryOnError,
-  WorkflowRunConclusion,
-  WorkflowRunStatus,
-} from "./api.ts";
+import * as api from "./api.ts";
+import { run } from "./await-remote-run.ts";
+import * as constants from "./constants.ts";
 
-async function logFailureDetails(runId: number): Promise<void> {
-  const failedJobs = await getWorkflowRunFailedJobs(runId);
-  for (const failedJob of failedJobs) {
-    const failedSteps = failedJob.steps
-      .filter((step) => step.conclusion !== "success")
-      .map((step) => {
-        return (
-          `    ${step.number}: ${step.name}\n` +
-          `      Status: ${step.status}\n` +
-          `      Conclusion: ${step.conclusion}`
-        );
-      })
-      .join("\n");
-    core.error(
-      `Job ${failedJob.name}:\n` +
-        `  ID: ${failedJob.id}\n` +
-        `  Status: ${failedJob.status}\n` +
-        `  Conclusion: ${failedJob.conclusion}\n` +
-        `  URL: ${failedJob.url}\n` +
-        `  Steps (non-success):\n` +
-        failedSteps,
-    );
-  }
-}
-
-async function run(): Promise<void> {
+async function main(): Promise<void> {
   try {
-    const config = getConfig();
     const startTime = Date.now();
-    init(config);
 
-    const timeoutMs = config.runTimeoutSeconds * 1000;
-    let attemptNo = 0;
-    let elapsedTime = Date.now() - startTime;
+    const config = getConfig();
+    api.init(config);
 
+    const activeJobUrl = await api.fetchWorkflowRunActiveJobUrlRetry(
+      config.runId,
+      constants.WORKFLOW_RUN_ACTIVE_JOB_TIMEOUT_MS,
+    );
     core.info(
       `Awaiting completion of Workflow Run ${config.runId}...\n` +
         `  ID: ${config.runId}\n` +
-        `  URL: ${await getWorkflowRunActiveJobUrlRetry(config.runId, 1000)}`,
+        `  URL: ${activeJobUrl}`,
     );
 
-    while (elapsedTime < timeoutMs) {
-      attemptNo++;
-      elapsedTime = Date.now() - startTime;
-
-      const { status, conclusion } = await retryOnError(
-        async () => getWorkflowRunState(config.runId),
-        "getWorkflowRunState",
-        400,
-      );
-
-      if (status === WorkflowRunStatus.Completed) {
-        switch (conclusion) {
-          case WorkflowRunConclusion.Success:
-            core.info(
-              "Run Completed:\n" +
-                `  Run ID: ${config.runId}\n` +
-                `  Status: ${status}\n` +
-                `  Conclusion: ${conclusion}`,
-            );
-            return;
-          case WorkflowRunConclusion.ActionRequired:
-          case WorkflowRunConclusion.Cancelled:
-          case WorkflowRunConclusion.Failure:
-          case WorkflowRunConclusion.Neutral:
-          case WorkflowRunConclusion.Skipped:
-          case WorkflowRunConclusion.TimedOut:
-            core.error(`Run has failed with conclusion: ${conclusion}`);
-            await logFailureDetails(config.runId);
-            core.setFailed(conclusion);
-            return;
-          default:
-            core.setFailed(`Unknown conclusion: ${conclusion}`);
-            return;
-        }
-      }
-
-      core.debug(`Run has not concluded, attempt ${attemptNo}...`);
-
-      await new Promise((resolve) =>
-        setTimeout(resolve, config.pollIntervalMs),
-      );
-    }
-
-    throw new Error(
-      `Timeout exceeded while awaiting completion of Run ${config.runId}`,
-    );
+    await run({ config, startTime });
   } catch (error) {
     if (error instanceof Error) {
       core.error(`Failed to complete: ${error.message}`);
       if (!error.message.includes("Timeout")) {
         core.warning("Does the token have the correct permissions?");
       }
-      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-      error.stack && core.debug(error.stack);
+      core.debug(error.stack ?? "");
       core.setFailed(error.message);
     }
   }
 }
 
-((): Promise<void> => run())();
+if (!process.env.VITEST) {
+  await main();
+}
