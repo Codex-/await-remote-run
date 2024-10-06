@@ -55,8 +55,11 @@ export async function run({ config, startTime }: RunOpts): Promise<void> {
     );
     if (fetchWorkflowRunStateResult.success) {
       const { status, conclusion } = fetchWorkflowRunStateResult.value;
-
-      if (status === WorkflowRunStatus.Completed) {
+      if (status === WorkflowRunStatus.Queued) {
+        core.debug(`Run is queued to begin, attempt ${attemptNo}...`);
+      } else if (status === WorkflowRunStatus.InProgress) {
+        core.debug(`Run is in progress, attempt ${attemptNo}...`);
+      } else if (status === WorkflowRunStatus.Completed) {
         switch (conclusion) {
           case WorkflowRunConclusion.Success:
             core.info(
@@ -82,7 +85,7 @@ export async function run({ config, startTime }: RunOpts): Promise<void> {
         }
       }
     } else {
-      core.debug(`Run has not concluded, attempt ${attemptNo}...`);
+      core.debug(`Run has not yet been identified, attempt ${attemptNo}...`);
     }
 
     await sleep(config.pollIntervalMs);
