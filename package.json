@@ -10,13 +10,13 @@
     "build": "pnpm run build:types && pnpm run build:bundle",
     "build:bundle": "node ./esbuild.config.mjs",
     "build:types": "tsc",
-    "format:check": "prettier --check **/*.ts",
+    "format:check": "prettier --check **/*.*",
     "format": "pnpm run format:check --write",
     "lint": "eslint",
     "lint:fix": "pnpm run lint --fix",
-    "release": "release-it",
     "test": "vitest",
-    "test:coverage": "vitest --coverage"
+    "test:coverage": "vitest --coverage",
+    "knip": "knip"
   },
   "repository": {
     "type": "git",
@@ -51,6 +51,7 @@
     "eslint-plugin-github": "^5.0.2",
     "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-import-x": "^4.4.0",
+    "knip": "^5.32.0",
     "prettier": "3.3.3",
     "typescript": "^5.6.3",
     "typescript-eslint": "^8.12.2",
