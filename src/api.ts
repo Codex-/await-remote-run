@@ -5,6 +5,8 @@ import * as github from "@actions/github";
 
 import { type ActionConfig, getConfig } from "./action.ts";
 import { withEtag } from "./etags.ts";
+import type { Result } from "./types.ts";
+import { sleep } from "./utils.ts";
 
 type Octokit = ReturnType<(typeof github)["getOctokit"]>;
 
@@ -251,32 +253,35 @@ export async function fetchWorkflowRunActiveJobUrlRetry(
 
 export async function retryOnError<T>(
   func: () => Promise<T>,
-  name: string,
-  timeout = 5000,
-): Promise<T> {
+  timeoutMs: number,
+  functionName?: string,
+): Promise<Result<T>> {
   const startTime = Date.now();
-  let elapsedTime = Date.now() - startTime;
 
-  while (elapsedTime < timeout) {
-    elapsedTime = Date.now() - startTime;
+  let elapsedTime = 0;
+  while (elapsedTime < timeoutMs) {
     try {
-      return await func();
+      const value = await func();
+      return {
+        success: true,
+        value: value,
+      };
     } catch (error) {
-      if (error instanceof Error) {
-        // We now exceed the time, so throw the error up
-        if (Date.now() - startTime >= timeout) {
-          throw error;
-        }
-
+      if (error instanceof Error && Date.now() - startTime < timeoutMs) {
         core.warning(
           "retryOnError: An unexpected error has occurred:\n" +
-            `  name: ${name}\n` +
+            `  name: ${functionName ?? (func.name || "anonymous function")}\n` +
             `  error: ${error.message}`,
         );
       }
-      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
+
+    await sleep(1000);
+    elapsedTime = Date.now() - startTime;
   }
 
-  throw new Error(`Timeout exceeded while attempting to retry ${name}`);
+  return {
+    success: false,
+    reason: "timeout",
+  };
 }

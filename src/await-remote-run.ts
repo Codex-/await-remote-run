@@ -8,6 +8,7 @@ import {
   WorkflowRunConclusion,
   WorkflowRunStatus,
 } from "./api.ts";
+import { sleep } from "./utils.ts";
 
 async function logFailureDetails(runId: number): Promise<void> {
   const failedJobs = await fetchWorkflowRunFailedJobs(runId);
@@ -47,41 +48,44 @@ export async function run({ config, startTime }: RunOpts): Promise<void> {
     attemptNo++;
     elapsedTime = Date.now() - startTime;
 
-    const { status, conclusion } = await retryOnError(
+    const fetchWorkflowRunStateResult = await retryOnError(
       async () => fetchWorkflowRunState(config.runId),
-      "fetchWorkflowRunState",
       400,
+      "fetchWorkflowRunState",
     );
+    if (fetchWorkflowRunStateResult.success) {
+      const { status, conclusion } = fetchWorkflowRunStateResult.value;
 
-    if (status === WorkflowRunStatus.Completed) {
-      switch (conclusion) {
-        case WorkflowRunConclusion.Success:
-          core.info(
-            "Run Completed:\n" +
-              `  Run ID: ${config.runId}\n` +
-              `  Status: ${status}\n` +
-              `  Conclusion: ${conclusion}`,
-          );
-          return;
-        case WorkflowRunConclusion.ActionRequired:
-        case WorkflowRunConclusion.Cancelled:
-        case WorkflowRunConclusion.Failure:
-        case WorkflowRunConclusion.Neutral:
-        case WorkflowRunConclusion.Skipped:
-        case WorkflowRunConclusion.TimedOut:
-          core.error(`Run has failed with conclusion: ${conclusion}`);
-          await logFailureDetails(config.runId);
-          core.setFailed(conclusion);
-          return;
-        default:
-          core.setFailed(`Unknown conclusion: ${conclusion}`);
-          return;
+      if (status === WorkflowRunStatus.Completed) {
+        switch (conclusion) {
+          case WorkflowRunConclusion.Success:
+            core.info(
+              "Run Completed:\n" +
+                `  Run ID: ${config.runId}\n` +
+                `  Status: ${status}\n` +
+                `  Conclusion: ${conclusion}`,
+            );
+            return;
+          case WorkflowRunConclusion.ActionRequired:
+          case WorkflowRunConclusion.Cancelled:
+          case WorkflowRunConclusion.Failure:
+          case WorkflowRunConclusion.Neutral:
+          case WorkflowRunConclusion.Skipped:
+          case WorkflowRunConclusion.TimedOut:
+            core.error(`Run has failed with conclusion: ${conclusion}`);
+            await logFailureDetails(config.runId);
+            core.setFailed(conclusion);
+            return;
+          default:
+            core.setFailed(`Unknown conclusion: ${conclusion}`);
+            return;
+        }
       }
+    } else {
+      core.debug(`Run has not concluded, attempt ${attemptNo}...`);
     }
 
-    core.debug(`Run has not concluded, attempt ${attemptNo}...`);
-
-    await new Promise((resolve) => setTimeout(resolve, config.pollIntervalMs));
+    await sleep(config.pollIntervalMs);
   }
 
   throw new Error(

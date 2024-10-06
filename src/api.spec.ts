@@ -1,13 +1,13 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 import {
+  afterAll,
   afterEach,
   beforeEach,
   describe,
   expect,
   it,
   vi,
-  type MockInstance,
 } from "vitest";
 
 import {
@@ -19,6 +19,7 @@ import {
   retryOnError,
 } from "./api.ts";
 import { clearEtags } from "./etags.ts";
+import { mockLoggingFunctions } from "./test-utils/logging.mock.ts";
 
 vi.mock("@actions/core");
 vi.mock("@actions/github");
@@ -57,6 +58,13 @@ describe("API", () => {
     pollIntervalMs: 2500,
   };
 
+  const { coreWarningLogMock, assertOnlyCalled, assertNoneCalled } =
+    mockLoggingFunctions();
+
+  afterAll(() => {
+    vi.restoreAllMocks();
+  });
+
   beforeEach(() => {
     vi.spyOn(core, "getInput").mockReturnValue("");
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
@@ -65,7 +73,7 @@ describe("API", () => {
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    vi.resetAllMocks();
   });
 
   describe("fetchWorkflowRunState", () => {
@@ -483,50 +491,92 @@ describe("API", () => {
   });
 
   describe("retryOnError", () => {
-    let warningLogSpy: MockInstance<typeof console.warn>;
-
     beforeEach(() => {
       vi.useFakeTimers();
-      warningLogSpy = vi.spyOn(core, "warning");
     });
 
     afterEach(() => {
       vi.useRealTimers();
-      warningLogSpy.mockRestore();
+    });
+
+    it("should return a success result", async () => {
+      const testFunc = vi
+        .fn<() => Promise<string>>()
+        .mockImplementation(() => Promise.resolve("completed"));
+
+      const result = await retryOnError(() => testFunc(), 5000);
+
+      if (!result.success) {
+        expect.fail();
+      }
+
+      expect(result.success).toStrictEqual(true);
+      expect(result.value).toStrictEqual("completed");
+      assertNoneCalled();
     });
 
     it("should retry a function if it throws an error", async () => {
-      const funcName = "testFunc";
       const errorMsg = "some error";
       const testFunc = vi
         .fn<() => Promise<string>>()
         .mockImplementation(() => Promise.resolve("completed"))
         .mockImplementationOnce(() => Promise.reject(Error(errorMsg)));
 
-      const retryPromise = retryOnError(() => testFunc(), funcName);
+      const retryPromise = retryOnError(testFunc, 5000);
 
       // Progress timers to first failure
-      vi.advanceTimersByTime(500);
-      await vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(1000);
 
-      expect(warningLogSpy).toHaveBeenCalledOnce();
-      expect(warningLogSpy).toHaveBeenCalledWith(
-        "retryOnError: An unexpected error has occurred:\n" +
-          `  name: ${funcName}\n` +
-          `  error: ${errorMsg}`,
-      );
+      assertOnlyCalled(coreWarningLogMock);
+      expect(coreWarningLogMock).toHaveBeenCalledOnce();
+      expect(coreWarningLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(`
+        "retryOnError: An unexpected error has occurred:
+          name: spy
+          error: some error"
+      `);
+      expect(coreWarningLogMock.mock.calls[0]?.[0]).toContain(testFunc.name);
+      coreWarningLogMock.mockReset();
 
       // Progress timers to second success
-      vi.advanceTimersByTime(500);
-      await vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(1000);
+
       const result = await retryPromise;
 
-      expect(warningLogSpy).toHaveBeenCalledOnce();
-      expect(result).toStrictEqual("completed");
+      if (!result.success) {
+        expect.fail();
+      }
+
+      assertNoneCalled();
+      expect(result.success).toStrictEqual(true);
+      expect(result.value).toStrictEqual("completed");
     });
 
-    it("should throw the original error if timed out while calling the function", async () => {
-      const funcName = "testFunc";
+    it("should display a fallback function name if none is available", async () => {
+      const errorMsg = "some error";
+      const testFunc = vi
+        .fn<() => Promise<string>>()
+        .mockImplementationOnce(() => Promise.reject(Error(errorMsg)));
+
+      // Use anonymous function
+      const retryPromise = retryOnError(() => testFunc(), 5000);
+
+      // Progress timers to first failure
+      await vi.advanceTimersByTimeAsync(1000);
+
+      assertOnlyCalled(coreWarningLogMock);
+      expect(coreWarningLogMock).toHaveBeenCalledOnce();
+      expect(coreWarningLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(`
+        "retryOnError: An unexpected error has occurred:
+          name: anonymous function
+          error: some error"
+      `);
+      coreWarningLogMock.mockReset();
+
+      // Clean up promise
+      await retryPromise;
+    });
+
+    it("should return a timeout result", async () => {
       const errorMsg = "some error";
       const testFunc = vi
         .fn<() => Promise<string>>()
@@ -535,13 +585,19 @@ describe("API", () => {
           throw new Error(errorMsg);
         });
 
-      const retryPromise = retryOnError(() => testFunc(), funcName, 500);
+      const retryPromise = retryOnError(() => testFunc(), 500);
 
-      vi.advanceTimersByTime(500);
-      // eslint-disable-next-line @typescript-eslint/no-floating-promises
-      vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(2000);
 
-      await expect(retryPromise).rejects.toThrowError("some error");
+      const result = await retryPromise;
+
+      if (result.success) {
+        expect.fail();
+      }
+
+      expect(result.success).toStrictEqual(false);
+      expect(result.reason).toStrictEqual("timeout");
+      assertNoneCalled();
     });
   });
 });
