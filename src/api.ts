@@ -33,7 +33,7 @@ export function init(cfg?: ActionConfig): void {
   octokit = github.getOctokit(config.token);
 }
 
-export interface WorkflowRunState {
+interface WorkflowRunState {
   status: WorkflowRunStatus | null;
   conclusion: WorkflowRunConclusion | null;
 }
@@ -78,7 +78,7 @@ export async function fetchWorkflowRunState(
   }
 }
 
-export interface WorkflowRunJob {
+interface WorkflowRunJob {
   id: number;
   name: string;
   status: "queued" | "in_progress" | "completed" | "waiting";
@@ -87,7 +87,7 @@ export interface WorkflowRunJob {
   url: string | null;
 }
 
-export interface WorkflowRunJobStep {
+interface WorkflowRunJobStep {
   name: string;
   status: string;
   conclusion: string | null;
