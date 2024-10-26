@@ -26,7 +26,12 @@ async function main(): Promise<void> {
         `  URL: ${activeJobUrl}`,
     );
 
-    const result = await getWorkflowRunResult({ config, startTime });
+    const result = await getWorkflowRunResult({
+      startTime,
+      pollIntervalMs: config.pollIntervalMs,
+      runId: config.runId,
+      runTimeoutMs: config.runTimeoutSeconds * 1000,
+    });
     if (result.success) {
       handleActionSuccess(config.runId, result.value.conclusion);
     } else {
