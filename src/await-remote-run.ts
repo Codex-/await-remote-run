@@ -1,6 +1,5 @@
 import * as core from "@actions/core";
 
-import { type ActionConfig } from "./action.ts";
 import {
   fetchWorkflowRunFailedJobs,
   fetchWorkflowRunState,
@@ -91,23 +90,25 @@ export async function handleActionFail(
 
 interface RunOpts {
   startTime: number;
-  config: ActionConfig;
+  pollIntervalMs: number;
+  runId: number;
+  runTimeoutMs: number;
 }
 export async function getWorkflowRunResult({
   startTime,
-  config,
+  runId,
+  runTimeoutMs,
+  pollIntervalMs,
 }: RunOpts): Promise<
   Result<{ status: WorkflowRunStatus; conclusion: WorkflowRunConclusion }>
 > {
-  const timeoutMs = config.runTimeoutSeconds * 1000;
-
   let attemptNo = 0;
   let elapsedTime = Date.now() - startTime;
-  while (elapsedTime < timeoutMs) {
+  while (elapsedTime < runTimeoutMs) {
     attemptNo++;
 
     const fetchWorkflowRunStateResult = await retryOnError(
-      async () => fetchWorkflowRunState(config.runId),
+      async () => fetchWorkflowRunState(runId),
       400,
       "fetchWorkflowRunState",
     );
@@ -133,7 +134,7 @@ export async function getWorkflowRunResult({
       core.debug(`Run has not yet been identified, attempt ${attemptNo}...`);
     }
 
-    await sleep(config.pollIntervalMs);
+    await sleep(pollIntervalMs);
     elapsedTime = Date.now() - startTime;
   }
 
