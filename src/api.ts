@@ -180,11 +180,11 @@ export async function fetchWorkflowRunFailedJobs(
     for (const job of jobs) {
       const steps = job.steps.map((step) => `${step.number}: ${step.name}`);
       core.debug(
-        `  Job: ${job.name}\n` +
-          `    ID: ${job.id}\n` +
-          `    Status: ${job.status}\n` +
-          `    Conclusion: ${job.conclusion}\n` +
-          `    Steps: [${steps.join(", ")}]`,
+        `    Job: ${job.name}\n` +
+          `      ID: ${job.id}\n` +
+          `      Status: ${job.status}\n` +
+          `      Conclusion: ${job.conclusion}\n` +
+          `      Steps: [${steps.join(", ")}]`,
       );
     }
 
