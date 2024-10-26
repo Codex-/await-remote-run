@@ -12,9 +12,18 @@ type Octokit = ReturnType<(typeof github)["getOctokit"]>;
 let config: ActionConfig;
 let octokit: Octokit;
 
+/**
+ * The Status and Conclusion types are difficult to find a reliable source
+ * of truth for, but this seems accurate from testing:
+ * https://docs.github.com/en/enterprise-server@3.14/rest/guides/using-the-rest-api-to-interact-with-checks#about-check-suites
+ */
+
 export enum WorkflowRunStatus {
   Queued = "queued",
   InProgress = "in_progress",
+  Requested = "requested",
+  Waiting = "waiting",
+  Pending = "pending",
   Completed = "completed",
 }
 
@@ -25,6 +34,8 @@ export enum WorkflowRunConclusion {
   Cancelled = "cancelled",
   Skipped = "skipped",
   TimedOut = "timed_out",
+  Stale = "stale",
+  StartupFailure = "startup_failure",
   ActionRequired = "action_required",
 }
 

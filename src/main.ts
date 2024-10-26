@@ -2,7 +2,11 @@ import * as core from "@actions/core";
 
 import { getConfig } from "./action.ts";
 import * as api from "./api.ts";
-import { run } from "./await-remote-run.ts";
+import {
+  getWorkflowRunResult,
+  handleActionFail,
+  handleActionSuccess,
+} from "./await-remote-run.ts";
 import * as constants from "./constants.ts";
 
 async function main(): Promise<void> {
@@ -22,15 +26,32 @@ async function main(): Promise<void> {
         `  URL: ${activeJobUrl}`,
     );
 
-    await run({ config, startTime });
+    const result = await getWorkflowRunResult({ config, startTime });
+    if (result.success) {
+      handleActionSuccess(config.runId, result.value.conclusion);
+    } else {
+      const elapsedTime = Date.now() - startTime;
+      const failureMsg =
+        result.reason === "timeout"
+          ? `Timeout exceeded while attempting to await run conclusion (${elapsedTime}ms)`
+          : result.reason === "inconclusive"
+            ? "Run was inconclusive"
+            : "Unsupported conclusion was returned";
+      await handleActionFail(failureMsg, config.runId);
+    }
   } catch (error) {
     if (error instanceof Error) {
-      core.error(`Failed to complete: ${error.message}`);
-      if (!error.message.includes("Timeout")) {
-        core.warning("Does the token have the correct permissions?");
-      }
+      const failureMsg = `Failed: An unhandled error has occurred: ${error.message}`;
+      core.setFailed(failureMsg);
+      core.error(failureMsg);
       core.debug(error.stack ?? "");
-      core.setFailed(error.message);
+    } else {
+      // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
+      const failureMsg = `Failed: An unknown error has occurred: ${error}`;
+      core.setFailed(failureMsg);
+      core.error(failureMsg);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      core.debug(error as any);
     }
   }
 }
