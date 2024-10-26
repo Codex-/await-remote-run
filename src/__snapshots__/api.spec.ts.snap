@@ -1,0 +1,25 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`API > fetchWorkflowRunJobs > fetchWorkflowRunFailedJobs > should return the jobs for a failed workflow run given a run ID 1`] = `
+{
+  "conclusion": "failure",
+  "id": 123456789,
+  "name": "test-run",
+  "status": "completed",
+  "steps": [
+    {
+      "conclusion": "success",
+      "name": "Step 1",
+      "number": 1,
+      "status": "completed",
+    },
+    {
+      "conclusion": "failure",
+      "name": "Step 2",
+      "number": 6,
+      "status": "completed",
+    },
+  ],
+  "url": "https://github.com/codex-/await-remote-run/runs/123456789",
+}
+`;
