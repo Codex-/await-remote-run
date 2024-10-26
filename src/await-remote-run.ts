@@ -10,19 +10,25 @@ import {
 import type { Result } from "./types.ts";
 import { sleep } from "./utils.ts";
 
-function getWorkflowRunStatusResult(
+export function getWorkflowRunStatusResult(
   status: WorkflowRunStatus | null,
   attemptNo: number,
 ): Result<WorkflowRunStatus> {
-  if (status === WorkflowRunStatus.Queued) {
-    core.debug(`Run is queued to begin, attempt ${attemptNo}...`);
-  } else if (status === WorkflowRunStatus.InProgress) {
-    core.debug(`Run is in progress, attempt ${attemptNo}...`);
-  } else if (status === WorkflowRunStatus.Completed) {
+  if (status === WorkflowRunStatus.Completed) {
     core.debug("Run has completed");
     return { success: true, value: status };
   }
-  return { success: false, reason: "inconclusive" };
+
+  if (status === WorkflowRunStatus.Queued) {
+    core.debug(`Run is queued to begin, attempt ${attemptNo}...`);
+    return { success: false, reason: "inconclusive" };
+  } else if (status === WorkflowRunStatus.InProgress) {
+    core.debug(`Run is in progress, attempt ${attemptNo}...`);
+    return { success: false, reason: "inconclusive" };
+  }
+
+  core.debug(`Run has returned an unsupported status: ${status}`);
+  return { success: false, reason: "unsupported" };
 }
 
 function getWorkflowRunConclusionResult(
