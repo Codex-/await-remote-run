@@ -245,17 +245,17 @@ export async function fetchWorkflowRunActiveJobUrlRetry(
   let elapsedTime = Date.now() - startTime;
 
   while (elapsedTime < timeout) {
-    elapsedTime = Date.now() - startTime;
-    core.debug(
-      `No 'in_progress' or 'completed' Jobs found for Workflow Run ${runId}, retrying...`,
-    );
-
     const url = await fetchWorkflowRunActiveJobUrl(runId);
     if (url) {
       return url;
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    core.debug(
+      `No 'in_progress' or 'completed' Jobs found for Workflow Run ${runId}, retrying...`,
+    );
+
+    await sleep(200);
+    elapsedTime = Date.now() - startTime;
   }
   core.debug(`Timed out while trying to fetch URL for Workflow Run ${runId}`);
 
