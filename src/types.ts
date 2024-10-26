@@ -1,16 +1,11 @@
-export type Result<T> = ResultSuccess<T> | ResultTimeout | ResultInvalidInput;
+export type Result<T> = ResultSuccess<T> | ResultFailure;
 
 interface ResultSuccess<T> {
   success: true;
   value: T;
 }
 
-interface ResultTimeout {
+interface ResultFailure {
   success: false;
-  reason: "timeout";
-}
-
-interface ResultInvalidInput {
-  success: false;
-  reason: "invalid input";
+  reason: "timeout" | "inconclusive" | "unsupported";
 }
