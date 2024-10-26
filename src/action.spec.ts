@@ -2,10 +2,13 @@ import * as core from "@actions/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { type ActionConfig, getConfig } from "./action.ts";
+import { mockLoggingFunctions } from "./test-utils/logging.mock.ts";
 
 vi.mock("@actions/core");
 
 describe("Action", () => {
+  const { assertNoneCalled } = mockLoggingFunctions();
+
   describe("getConfig", () => {
     // Represent the process.env inputs.
     let mockEnvConfig: any;
@@ -47,6 +50,7 @@ describe("Action", () => {
     });
 
     it("should return a valid config", () => {
+      // Behaviour
       const config: ActionConfig = getConfig();
 
       // Assert that the numbers / types have been properly loaded.
@@ -56,20 +60,53 @@ describe("Action", () => {
       expect(config.runId).toStrictEqual(123456);
       expect(config.runTimeoutSeconds).toStrictEqual(300);
       expect(config.pollIntervalMs).toStrictEqual(2500);
+
+      // Logging
+      assertNoneCalled();
     });
 
     it("should provide a default run timeout if none is supplied", () => {
       mockEnvConfig.run_timeout_seconds = "";
-      const config: ActionConfig = getConfig();
 
+      // Behaviour
+      const config: ActionConfig = getConfig();
       expect(config.runTimeoutSeconds).toStrictEqual(300);
+
+      // Logging
+      assertNoneCalled();
     });
 
     it("should provide a default polling interval if none is supplied", () => {
       mockEnvConfig.poll_interval_ms = "";
-      const config: ActionConfig = getConfig();
 
+      // Behaviour
+      const config: ActionConfig = getConfig();
       expect(config.pollIntervalMs).toStrictEqual(5000);
+
+      // Logging
+      assertNoneCalled();
+    });
+
+    it("should throw if an invalid number value is provided", () => {
+      mockEnvConfig.run_timeout_seconds = "invalid value";
+
+      // Behaviour
+      expect(() => getConfig()).toThrowError(
+        "Unable to parse value: invalid value",
+      );
+
+      // Logging
+      assertNoneCalled();
+    });
+
+    it("should throw if no run ID value is provided", () => {
+      mockEnvConfig.run_id = "";
+
+      // Behaviour
+      expect(() => getConfig()).toThrowError("Run ID must be provided");
+
+      // Logging
+      assertNoneCalled();
     });
   });
 });
