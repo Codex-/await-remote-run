@@ -1,0 +1,38 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`await-remote-run > handleActionFail > should fetch and log failed jobs from the remote run 2`] = `
+"Job First Job:
+  ID: 0
+  Status: completed
+  Conclusion: failure
+  URL: url
+  Steps (non-success):
+    0: First Step
+      Status: completed
+      Conclusion: failure"
+`;
+
+exports[`await-remote-run > handleActionFail > should fetch and log failed jobs from the remote run 3`] = `
+"Job Second Job:
+  ID: 0
+  Status: completed
+  Conclusion: failure
+  URL: url
+  Steps (non-success):
+"
+`;
+
+exports[`await-remote-run > handleActionFail > should only log steps that did not succeed 2`] = `
+"Job First Job:
+  ID: 0
+  Status: completed
+  Conclusion: failure
+  URL: url
+  Steps (non-success):
+    1: Second Step
+      Status: completed
+      Conclusion: failure
+    2: Third Step
+      Status: completed
+      Conclusion: skipped"
+`;
