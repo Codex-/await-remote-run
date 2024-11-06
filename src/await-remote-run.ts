@@ -52,22 +52,13 @@ function getWorkflowRunConclusionResult(
   }
 }
 
-export function handleActionSuccess(
-  runId: number,
-  conclusion: WorkflowRunConclusion,
-): void {
-  core.info(
-    "Run Completed:\n" +
-      `  Run ID: ${runId}\n` +
-      `  Status: ${WorkflowRunStatus.Completed}\n` +
-      `  Conclusion: ${conclusion}`,
-  );
-}
-
 export async function handleActionFail(
   failureMsg: string,
   runId: number,
 ): Promise<void> {
+  core.error(`Failed: ${failureMsg}`);
+  core.setFailed(failureMsg);
+
   const failedJobs = await fetchWorkflowRunFailedJobs(runId);
   for (const failedJob of failedJobs) {
     const failedSteps = failedJob.steps
@@ -90,8 +81,6 @@ export async function handleActionFail(
         failedSteps,
     );
   }
-  core.error(`Failed: ${failureMsg}`);
-  core.setFailed(failureMsg);
 }
 
 interface RunOpts {
