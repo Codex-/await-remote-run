@@ -5,40 +5,17 @@ import * as github from "@actions/github";
 
 import { type ActionConfig, getConfig } from "./action.ts";
 import { withEtag } from "./etags.ts";
-import type { Result } from "./types.ts";
+import type {
+  Result,
+  WorkflowRunConclusion,
+  WorkflowRunStatus,
+} from "./types.ts";
 import { sleep } from "./utils.ts";
 
 type Octokit = ReturnType<(typeof github)["getOctokit"]>;
 
 let config: ActionConfig;
 let octokit: Octokit;
-
-/**
- * The Status and Conclusion types are difficult to find a reliable source
- * of truth for, but this seems accurate from testing:
- * https://docs.github.com/en/enterprise-server@3.14/rest/guides/using-the-rest-api-to-interact-with-checks#about-check-suites
- */
-
-export enum WorkflowRunStatus {
-  Queued = "queued",
-  InProgress = "in_progress",
-  Requested = "requested",
-  Waiting = "waiting",
-  Pending = "pending",
-  Completed = "completed",
-}
-
-export enum WorkflowRunConclusion {
-  Success = "success",
-  Failure = "failure",
-  Neutral = "neutral",
-  Cancelled = "cancelled",
-  Skipped = "skipped",
-  TimedOut = "timed_out",
-  Stale = "stale",
-  StartupFailure = "startup_failure",
-  ActionRequired = "action_required",
-}
 
 export function init(cfg?: ActionConfig): void {
   config = cfg ?? getConfig();
