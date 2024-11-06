@@ -4,36 +4,39 @@ import {
   fetchWorkflowRunFailedJobs,
   fetchWorkflowRunState,
   retryOnError,
+} from "./api.ts";
+import {
   WorkflowRunConclusion,
   WorkflowRunStatus,
-} from "./api.ts";
-import type { Result } from "./types.ts";
+  type Result,
+  type WorkflowRunConclusionResult,
+  type WorkflowRunStatusResult,
+} from "./types.ts";
 import { sleep } from "./utils.ts";
 
 export function getWorkflowRunStatusResult(
   status: WorkflowRunStatus | null,
   attemptNo: number,
-): Result<WorkflowRunStatus> {
+): WorkflowRunStatusResult {
   if (status === WorkflowRunStatus.Completed) {
-    core.debug("Run has completed");
     return { success: true, value: status };
   }
 
   if (status === WorkflowRunStatus.Queued) {
     core.debug(`Run is queued to begin, attempt ${attemptNo}...`);
-    return { success: false, reason: "inconclusive" };
+    return { success: false, reason: "pending", value: status };
   } else if (status === WorkflowRunStatus.InProgress) {
     core.debug(`Run is in progress, attempt ${attemptNo}...`);
-    return { success: false, reason: "inconclusive" };
+    return { success: false, reason: "pending", value: status };
   }
 
-  core.debug(`Run has returned an unsupported status: ${status}`);
-  return { success: false, reason: "unsupported" };
+  core.debug(`Run status is unsupported: ${status}`);
+  return { success: false, reason: "unsupported", value: status ?? "null" };
 }
 
-function getWorkflowRunConclusionResult(
+export function getWorkflowRunConclusionResult(
   conclusion: WorkflowRunConclusion | null,
-): Result<WorkflowRunConclusion> {
+): WorkflowRunConclusionResult {
   switch (conclusion) {
     case WorkflowRunConclusion.Success:
       return { success: true, value: conclusion };
@@ -42,13 +45,19 @@ function getWorkflowRunConclusionResult(
     case WorkflowRunConclusion.Failure:
     case WorkflowRunConclusion.Neutral:
     case WorkflowRunConclusion.Skipped:
-    case WorkflowRunConclusion.TimedOut:
       core.error(`Run has failed with conclusion: ${conclusion}`);
-      return { success: false, reason: "timeout" };
+      return { success: false, reason: "inconclusive", value: conclusion };
+    case WorkflowRunConclusion.TimedOut:
+      core.error("Run has timeout out");
+      return { success: false, reason: "timeout", value: conclusion };
     default:
       core.error(`Run has failed with unsupported conclusion: ${conclusion}`);
       core.info("Please open an issue with this conclusion value");
-      return { success: false, reason: "unsupported" };
+      return {
+        success: false,
+        reason: "unsupported",
+        value: conclusion ?? "null",
+      };
   }
 }
 
@@ -95,7 +104,10 @@ export async function getWorkflowRunResult({
   runTimeoutMs,
   pollIntervalMs,
 }: RunOpts): Promise<
-  Result<{ status: WorkflowRunStatus; conclusion: WorkflowRunConclusion }>
+  Result<
+    | { status: WorkflowRunStatus.Completed; conclusion: WorkflowRunConclusion }
+    | { status: WorkflowRunStatus; conclusion?: WorkflowRunConclusion }
+  >
 > {
   let attemptNo = 0;
   let elapsedTime = Date.now() - startTime;
@@ -107,26 +119,31 @@ export async function getWorkflowRunResult({
       400,
       "fetchWorkflowRunState",
     );
-    if (fetchWorkflowRunStateResult.success) {
+    if (!fetchWorkflowRunStateResult.success) {
+      core.debug(`Failed to fetch run state, attempt ${attemptNo}...`);
+    } else {
       const { status, conclusion } = fetchWorkflowRunStateResult.value;
       const statusResult = getWorkflowRunStatusResult(status, attemptNo);
       if (statusResult.success) {
+        // We only get a conclusion should the status resolve, otherwise it is null.
         const conclusionResult = getWorkflowRunConclusionResult(conclusion);
 
-        if (conclusionResult.success) {
-          return {
-            success: true,
-            value: {
-              status: statusResult.value,
-              conclusion: conclusionResult.value,
-            },
-          };
-        } else {
-          return conclusionResult;
-        }
+        return {
+          success: true,
+          value: {
+            status: statusResult.value,
+            conclusion: conclusionResult.success
+              ? conclusionResult.value
+              : undefined,
+          },
+        };
       }
-    } else {
-      core.debug(`Run has not yet been identified, attempt ${attemptNo}...`);
+
+      // If the status is unsupported, we can't guarantee it will ever
+      // resolve. Alert to raise this so we can handle it properly.
+      if (statusResult.reason === "unsupported") {
+        return statusResult;
+      }
     }
 
     await sleep(pollIntervalMs);
