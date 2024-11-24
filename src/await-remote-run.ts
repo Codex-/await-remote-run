@@ -128,15 +128,30 @@ export async function getWorkflowRunResult({
       if (statusResult.success) {
         // We only get a conclusion should the status resolve, otherwise it is null.
         const conclusionResult = getWorkflowRunConclusionResult(conclusion);
+        if (
+          conclusionResult.success ||
+          conclusionResult.reason === "inconclusive"
+        ) {
+          return {
+            success: true,
+            value: {
+              status: statusResult.value,
+              conclusion: conclusionResult.value,
+            },
+          };
+        }
+
+        if (conclusionResult.reason === "timeout") {
+          return {
+            success: false,
+            reason: "timeout",
+          };
+        }
 
         return {
-          success: true,
-          value: {
-            status: statusResult.value,
-            conclusion: conclusionResult.success
-              ? conclusionResult.value
-              : undefined,
-          },
+          success: false,
+          reason: "unsupported",
+          value: conclusionResult.value,
         };
       }
 
