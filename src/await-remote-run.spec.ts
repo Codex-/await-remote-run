@@ -328,4 +328,267 @@ describe("await-remote-run", () => {
       expect(coreErrorLogMock.mock.calls[1]?.[0]).toMatchSnapshot();
     });
   });
+
+  describe("getWorkflowRunResult", () => {
+    let apiFetchWorkflowRunStateMock: MockInstance<
+      typeof api.fetchWorkflowRunState
+    >;
+    let apiRetryOnErrorMock: MockInstance<typeof api.retryOnError>;
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+
+      apiFetchWorkflowRunStateMock = vi.spyOn(api, "fetchWorkflowRunState");
+      apiRetryOnErrorMock = vi.spyOn(api, "retryOnError");
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("succeeds on the completion of a run", async () => {
+      apiFetchWorkflowRunStateMock.mockResolvedValue({
+        status: WorkflowRunStatus.Completed,
+        conclusion: WorkflowRunConclusion.Success,
+      });
+      apiRetryOnErrorMock.mockImplementation(async (toTry) => ({
+        success: true,
+        value: await toTry(),
+      }));
+
+      // Behaviour
+      const getWorkflowRunResultPromise = getWorkflowRunResult({
+        startTime: Date.now(),
+        pollIntervalMs: 100,
+        runId: 0,
+        runTimeoutMs: 10_000,
+      });
+      await expect(getWorkflowRunResultPromise).resolves.not.toThrow();
+      const result = await getWorkflowRunResultPromise;
+      expect(result).toStrictEqual({
+        success: true,
+        value: {
+          conclusion: WorkflowRunConclusion.Success,
+          status: WorkflowRunStatus.Completed,
+        },
+      });
+
+      // Logging
+      assertNoneCalled();
+    });
+
+    it("retries on request failures", async () => {
+      const pollIntervalMs = 100;
+      apiFetchWorkflowRunStateMock.mockResolvedValue({
+        status: WorkflowRunStatus.Completed,
+        conclusion: WorkflowRunConclusion.Success,
+      });
+      apiRetryOnErrorMock
+        .mockImplementation(async (toTry) => ({
+          success: true,
+          value: await toTry(),
+        }))
+        .mockResolvedValueOnce({ success: false, reason: "timeout" })
+        .mockResolvedValueOnce({ success: false, reason: "timeout" });
+
+      // Behaviour
+      const getWorkflowRunResultPromise = getWorkflowRunResult({
+        startTime: Date.now(),
+        pollIntervalMs: pollIntervalMs,
+        runId: 0,
+        runTimeoutMs: 10_000,
+      });
+
+      // First iteration
+      await vi.advanceTimersByTimeAsync(1);
+      expect(coreDebugLogMock).toHaveBeenCalledOnce();
+
+      // Second iteration
+      await vi.advanceTimersByTimeAsync(100);
+      expect(coreDebugLogMock).toHaveBeenCalledTimes(2);
+
+      // Final iteration
+      await vi.advanceTimersByTimeAsync(100);
+      await expect(getWorkflowRunResultPromise).resolves.not.toThrow();
+      const result = await getWorkflowRunResultPromise;
+      expect(result).toStrictEqual({
+        success: true,
+        value: {
+          conclusion: WorkflowRunConclusion.Success,
+          status: WorkflowRunStatus.Completed,
+        },
+      });
+
+      assertOnlyCalled(coreDebugLogMock);
+      expect(coreDebugLogMock).toBeCalledTimes(2);
+      expect(coreDebugLogMock.mock.calls).toMatchSnapshot();
+    });
+
+    it("returns the conclusion if available", async () => {
+      const expectedConclusion = WorkflowRunConclusion.Skipped;
+      apiFetchWorkflowRunStateMock.mockResolvedValue({
+        status: WorkflowRunStatus.Completed,
+        conclusion: expectedConclusion,
+      });
+      apiRetryOnErrorMock.mockImplementation(async (toTry) => ({
+        success: true,
+        value: await toTry(),
+      }));
+
+      // Behaviour
+      const getWorkflowRunResultPromise = getWorkflowRunResult({
+        startTime: Date.now(),
+        pollIntervalMs: 100,
+        runId: 0,
+        runTimeoutMs: 10_000,
+      });
+      await expect(getWorkflowRunResultPromise).resolves.not.toThrow();
+      const result = await getWorkflowRunResultPromise;
+      expect(result).toStrictEqual({
+        success: true,
+        value: {
+          conclusion: expectedConclusion,
+          status: WorkflowRunStatus.Completed,
+        },
+      });
+
+      // Logging
+      assertOnlyCalled(coreErrorLogMock);
+      expect(coreErrorLogMock).toHaveBeenCalledOnce();
+      expect(coreErrorLogMock.mock.calls).toMatchSnapshot();
+    });
+
+    it("returns a failure on timeout conclusion", async () => {
+      const expectedConclusion = WorkflowRunConclusion.TimedOut;
+      apiFetchWorkflowRunStateMock.mockResolvedValue({
+        status: WorkflowRunStatus.Completed,
+        conclusion: expectedConclusion,
+      });
+      apiRetryOnErrorMock.mockImplementation(async (toTry) => ({
+        success: true,
+        value: await toTry(),
+      }));
+
+      // Behaviour
+      const getWorkflowRunResultPromise = getWorkflowRunResult({
+        startTime: Date.now(),
+        pollIntervalMs: 100,
+        runId: 0,
+        runTimeoutMs: 10_000,
+      });
+      await expect(getWorkflowRunResultPromise).resolves.not.toThrow();
+      const result = await getWorkflowRunResultPromise;
+      expect(result).toStrictEqual({
+        success: false,
+        reason: "timeout",
+      });
+
+      // Logging
+      assertOnlyCalled(coreErrorLogMock);
+      expect(coreErrorLogMock).toHaveBeenCalledOnce();
+      expect(coreErrorLogMock.mock.calls).toMatchSnapshot();
+    });
+
+    it("returns a failure on an unsupported conclusion", async () => {
+      const expectedConclusion = "weird";
+      apiFetchWorkflowRunStateMock.mockResolvedValue({
+        status: WorkflowRunStatus.Completed,
+        conclusion: expectedConclusion as any,
+      });
+      apiRetryOnErrorMock.mockImplementation(async (toTry) => ({
+        success: true,
+        value: await toTry(),
+      }));
+
+      // Behaviour
+      const getWorkflowRunResultPromise = getWorkflowRunResult({
+        startTime: Date.now(),
+        pollIntervalMs: 100,
+        runId: 0,
+        runTimeoutMs: 10_000,
+      });
+      await expect(getWorkflowRunResultPromise).resolves.not.toThrow();
+      const result = await getWorkflowRunResultPromise;
+      expect(result).toStrictEqual({
+        success: false,
+        reason: "unsupported",
+        value: expectedConclusion,
+      });
+
+      // Logging
+      assertOnlyCalled(coreErrorLogMock, coreInfoLogMock);
+      expect(coreErrorLogMock).toHaveBeenCalledOnce();
+      expect(coreErrorLogMock.mock.calls).toMatchSnapshot();
+      expect(coreInfoLogMock).toHaveBeenCalledOnce();
+      expect(coreInfoLogMock.mock.calls).toMatchSnapshot();
+    });
+
+    it("returns a failure if the status is unsupported", async () => {
+      const expectedStatus = "weird";
+      apiFetchWorkflowRunStateMock.mockResolvedValue({
+        status: expectedStatus as any,
+        conclusion: WorkflowRunConclusion.Failure,
+      });
+      apiRetryOnErrorMock.mockImplementation(async (toTry) => ({
+        success: true,
+        value: await toTry(),
+      }));
+
+      // Behaviour
+      const getWorkflowRunResultPromise = getWorkflowRunResult({
+        startTime: Date.now(),
+        pollIntervalMs: 100,
+        runId: 0,
+        runTimeoutMs: 10_000,
+      });
+      await expect(getWorkflowRunResultPromise).resolves.not.toThrow();
+      const result = await getWorkflowRunResultPromise;
+      expect(result).toStrictEqual({
+        success: false,
+        reason: "unsupported",
+        value: "weird",
+      });
+
+      // Logging
+      assertOnlyCalled(coreErrorLogMock, coreInfoLogMock);
+      expect(coreErrorLogMock).toHaveBeenCalledOnce();
+      expect(coreErrorLogMock.mock.calls).toMatchSnapshot();
+      expect(coreInfoLogMock).toHaveBeenCalledOnce();
+      expect(coreInfoLogMock.mock.calls).toMatchSnapshot();
+    });
+
+    it("returns a timeout", async () => {
+      const pollIntervalMs = 100;
+      const runTimeoutMs = 1000;
+      const expectedIterations = runTimeoutMs / pollIntervalMs;
+      apiFetchWorkflowRunStateMock.mockResolvedValue({
+        status: WorkflowRunStatus.InProgress,
+        conclusion: null,
+      });
+      apiRetryOnErrorMock.mockImplementation(async (toTry) => ({
+        success: true,
+        value: await toTry(),
+      }));
+
+      // Behaviour
+      const getWorkflowRunResultPromise = getWorkflowRunResult({
+        startTime: Date.now(),
+        pollIntervalMs: pollIntervalMs,
+        runId: 0,
+        runTimeoutMs: runTimeoutMs,
+      });
+      await vi.advanceTimersByTimeAsync(1000);
+      await expect(getWorkflowRunResultPromise).resolves.not.toThrow();
+      const result = await getWorkflowRunResultPromise;
+      expect(result).toStrictEqual({
+        success: false,
+        reason: "timeout",
+      });
+
+      // Logging
+      assertOnlyCalled(coreDebugLogMock);
+      expect(coreDebugLogMock).toHaveBeenCalledTimes(expectedIterations);
+      expect(coreDebugLogMock.mock.calls).toMatchSnapshot();
+    });
+  });
 });
