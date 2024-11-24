@@ -25,14 +25,14 @@ export enum WorkflowRunConclusion {
   ActionRequired = "action_required",
 }
 
-export type Result<T> = ResultSuccess<T> | ResultFailure | ResultUnsupported;
+export type Result<T> = ResultSuccess<T> | RequestTimeout | ResultUnsupported;
 
 interface ResultSuccess<T> {
   success: true;
   value: T;
 }
 
-interface ResultFailure {
+interface RequestTimeout {
   success: false;
   reason: "timeout";
 }
