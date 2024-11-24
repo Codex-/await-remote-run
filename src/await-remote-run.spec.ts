@@ -13,6 +13,7 @@ import {
 import * as api from "./api.ts";
 import {
   getWorkflowRunConclusionResult,
+  getWorkflowRunResult,
   getWorkflowRunStatusResult,
   handleActionFail,
 } from "./await-remote-run.ts";
@@ -105,10 +106,14 @@ describe("await-remote-run", () => {
       expect(result.reason).toStrictEqual("unsupported");
 
       // Logging
-      assertOnlyCalled(coreDebugLogMock);
-      expect(coreDebugLogMock).toHaveBeenCalledOnce();
-      expect(coreDebugLogMock.mock.lastCall?.[0]).toStrictEqual(
+      assertOnlyCalled(coreErrorLogMock, coreInfoLogMock);
+      expect(coreErrorLogMock).toHaveBeenCalledOnce();
+      expect(coreErrorLogMock.mock.lastCall?.[0]).toStrictEqual(
         `Run status is unsupported: ${status}`,
+      );
+      expect(coreInfoLogMock).toHaveBeenCalledOnce();
+      expect(coreInfoLogMock.mock.lastCall?.[0]).toStrictEqual(
+        "Please open an issue with this status value",
       );
     });
   });

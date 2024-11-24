@@ -30,7 +30,8 @@ export function getWorkflowRunStatusResult(
     return { success: false, reason: "pending", value: status };
   }
 
-  core.debug(`Run status is unsupported: ${status}`);
+  core.error(`Run status is unsupported: ${status}`);
+  core.info("Please open an issue with this status value");
   return { success: false, reason: "unsupported", value: status ?? "null" };
 }
 
