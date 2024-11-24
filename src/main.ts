@@ -4,7 +4,7 @@ import { getConfig } from "./action.ts";
 import * as api from "./api.ts";
 import { getWorkflowRunResult, handleActionFail } from "./await-remote-run.ts";
 import * as constants from "./constants.ts";
-import { WorkflowRunConclusion, WorkflowRunStatus } from "./types.ts";
+import { WorkflowRunConclusion } from "./types.ts";
 
 async function main(): Promise<void> {
   try {
@@ -29,21 +29,30 @@ async function main(): Promise<void> {
       runId: config.runId,
       runTimeoutMs: config.runTimeoutSeconds * 1000,
     });
-    if (result.success) {
-      core.info(
-        "Run Completed:\n" +
-          `  Run ID: ${config.runId}\n` +
-          `  Status: ${WorkflowRunStatus.Completed}\n` +
-          `  Conclusion: ${WorkflowRunConclusion.Success}`,
-      );
-    } else {
+    if (!result.success) {
       const elapsedTime = Date.now() - startTime;
       const failureMsg =
         result.reason === "timeout"
           ? `Timeout exceeded while attempting to await run conclusion (${elapsedTime}ms)`
           : `An unsupported value was reached: ${result.value}`;
       await handleActionFail(failureMsg, config.runId);
+      return;
     }
+
+    const { status, conclusion } = result.value;
+    if (conclusion === WorkflowRunConclusion.Success) {
+      core.info(
+        "Run Completed:\n" +
+          `  Run ID: ${config.runId}\n` +
+          `  Status: ${status}\n` +
+          `  Conclusion: ${conclusion}`,
+      );
+    }
+
+    await handleActionFail(
+      `Run has concluded with ${conclusion}`,
+      config.runId,
+    );
   } catch (error) {
     if (error instanceof Error) {
       const failureMsg = `Failed: An unhandled error has occurred: ${error.message}`;
