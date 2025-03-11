@@ -13,33 +13,39 @@ async function main(): Promise<void> {
     const config = getConfig();
     api.init(config);
 
-    const activeJobUrl = await api.fetchWorkflowRunActiveJobUrlRetry(
+    const activeJobUrlResult = await api.fetchWorkflowRunActiveJobUrlRetry(
       config.runId,
       constants.WORKFLOW_RUN_ACTIVE_JOB_TIMEOUT_MS,
     );
+    if (!activeJobUrlResult.success) {
+      const elapsedTime = Date.now() - startTime;
+      const failureMsg = `Timeout exceeded while attempting to find the active job run URL (${elapsedTime}ms)`;
+      await handleActionFail(failureMsg, config.runId);
+      return;
+    }
     core.info(
       `Awaiting completion of Workflow Run ${config.runId}...\n` +
         `  ID: ${config.runId}\n` +
-        `  URL: ${activeJobUrl}`,
+        `  URL: ${activeJobUrlResult.value}`,
     );
 
-    const result = await getWorkflowRunResult({
+    const runResult = await getWorkflowRunResult({
       startTime,
       pollIntervalMs: config.pollIntervalMs,
       runId: config.runId,
       runTimeoutMs: config.runTimeoutSeconds * 1000,
     });
-    if (!result.success) {
+    if (!runResult.success) {
       const elapsedTime = Date.now() - startTime;
       const failureMsg =
-        result.reason === "timeout"
+        runResult.reason === "timeout"
           ? `Timeout exceeded while attempting to await run conclusion (${elapsedTime}ms)`
-          : `An unsupported value was reached: ${result.value}`;
+          : `An unsupported value was reached: ${runResult.value}`;
       await handleActionFail(failureMsg, config.runId);
       return;
     }
 
-    const { status, conclusion } = result.value;
+    const { status, conclusion } = runResult.value;
     if (conclusion === WorkflowRunConclusion.Success) {
       core.info(
         "Run Completed:\n" +

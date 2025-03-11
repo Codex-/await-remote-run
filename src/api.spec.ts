@@ -557,8 +557,14 @@ describe("API", () => {
           vi.advanceTimersByTime(400);
           await vi.advanceTimersByTimeAsync(400);
 
-          const url = await urlPromise;
-          expect(url).toStrictEqual("Unable to fetch URL");
+          const result = await urlPromise;
+
+          if (result.success) {
+            expect.fail();
+          }
+
+          expect(result.success).toStrictEqual(false);
+          expect(result.reason).toStrictEqual("timeout");
 
           // Logging
           assertOnlyCalled(coreDebugLogMock);
@@ -615,8 +621,14 @@ describe("API", () => {
           vi.advanceTimersByTime(400);
           await vi.advanceTimersByTimeAsync(400);
 
-          const url = await urlPromise;
-          expect(url).toStrictEqual("Unable to fetch URL");
+          const result = await urlPromise;
+
+          if (result.success) {
+            expect.fail();
+          }
+
+          expect(result.success).toStrictEqual(false);
+          expect(result.reason).toStrictEqual("timeout");
 
           // Logging
           assertOnlyCalled(coreDebugLogMock);
@@ -652,8 +664,16 @@ describe("API", () => {
           vi.advanceTimersByTime(400);
           await vi.advanceTimersByTimeAsync(400);
 
-          const url = await urlPromise;
-          expect(url).toStrictEqual(inProgressMockData.jobs[0]?.html_url);
+          const result = await urlPromise;
+
+          if (!result.success) {
+            expect.fail();
+          }
+
+          expect(result.success).toStrictEqual(true);
+          expect(result.value).toStrictEqual(
+            inProgressMockData.jobs[0]?.html_url,
+          );
 
           // Logging
           assertOnlyCalled(coreDebugLogMock);

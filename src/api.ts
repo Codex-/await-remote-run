@@ -217,14 +217,14 @@ export async function fetchWorkflowRunActiveJobUrl(
 export async function fetchWorkflowRunActiveJobUrlRetry(
   runId: number,
   timeout: number,
-): Promise<string> {
+): Promise<Result<string>> {
   const startTime = Date.now();
   let elapsedTime = Date.now() - startTime;
 
   while (elapsedTime < timeout) {
     const url = await fetchWorkflowRunActiveJobUrl(runId);
     if (url) {
-      return url;
+      return { success: true, value: url };
     }
 
     core.debug(
@@ -236,7 +236,7 @@ export async function fetchWorkflowRunActiveJobUrlRetry(
   }
   core.debug(`Timed out while trying to fetch URL for Workflow Run ${runId}`);
 
-  return "Unable to fetch URL";
+  return { success: false, reason: "timeout" };
 }
 
 export async function retryOnError<T>(
