@@ -15,12 +15,6 @@ importers:
         specifier: ^6.0.1
         version: 6.0.1
     devDependencies:
-      '@eslint/compat':
-        specifier: ^1.2.9
-        version: 1.2.9(eslint@9.28.0(jiti@2.4.2))
-      '@eslint/eslintrc':
-        specifier: ^3.3.1
-        version: 3.3.1
       '@eslint/js':
         specifier: ^9.28.0
         version: 9.28.0
@@ -33,12 +27,6 @@ importers:
       '@types/node':
         specifier: ^20.17.57
         version: 20.17.57
-      '@typescript-eslint/eslint-plugin':
-        specifier: ^8.33.1
-        version: 8.33.1(@typescript-eslint/parser@8.33.1(eslint@9.28.0(jiti@2.4.2))(typescript@5.8.3))(eslint@9.28.0(jiti@2.4.2))(typescript@5.8.3)
-      '@typescript-eslint/parser':
-        specifier: ^8.33.1
-        version: 8.33.1(eslint@9.28.0(jiti@2.4.2))(typescript@5.8.3)
       '@vitest/coverage-v8':
         specifier: ^3.2.1
         version: 3.2.1(vitest@3.2.1(@types/node@20.17.57)(jiti@2.4.2)(yaml@2.7.1))
