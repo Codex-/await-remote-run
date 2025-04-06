@@ -10,13 +10,13 @@
     "build": "pnpm run build:types && pnpm run build:bundle",
     "build:bundle": "node ./esbuild.config.mjs",
     "build:types": "tsc",
-    "format:check": "prettier --check **/*.ts",
+    "format:check": "prettier --check **/*.*",
     "format": "pnpm run format:check --write",
     "lint": "eslint .",
     "lint:fix": "pnpm run lint --fix",
-    "release": "release-it",
     "test": "vitest",
-    "test:coverage": "vitest --coverage"
+    "test:coverage": "vitest --coverage",
+    "knip": "knip"
   },
   "repository": {
     "type": "git",
@@ -32,26 +32,31 @@
     "@actions/github": "^6.0.0"
   },
   "devDependencies": {
-    "@eslint/compat": "^1.2.7",
-    "@eslint/eslintrc": "^3.3.0",
-    "@eslint/js": "^9.21.0",
-    "@types/eslint__js": "^8.42.3",
-    "@types/node": "^20.17.21",
-    "@typescript-eslint/eslint-plugin": "^8.25.0",
-    "@typescript-eslint/parser": "^8.25.0",
-    "@vitest/coverage-v8": "^3.0.7",
+    "@eslint/js": "^9.24.0",
+    "@opentf/std": "^0.13.0",
+    "@total-typescript/ts-reset": "^0.6.1",
+    "@types/node": "^20.17.16",
+    "@typescript-eslint/eslint-plugin": "^8.29.0",
+    "@typescript-eslint/parser": "^8.29.0",
+    "@vitest/coverage-v8": "^3.1.1",
     "chalk": "^5.4.1",
-    "changelogithub": "^13.12.1",
-    "esbuild": "^0.25.0",
-    "eslint": "^9.21.0",
-    "eslint-config-prettier": "^10.0.2",
-    "eslint-import-resolver-typescript": "^3.8.3",
-    "eslint-plugin-github": "^5.1.8",
+    "changelogithub": "^13.13.0",
+    "esbuild": "^0.25.2",
+    "eslint": "^9.24.0",
+    "eslint-config-prettier": "^10.1.1",
+    "eslint-import-resolver-typescript": "^4.3.1",
+    "eslint-plugin-github": "^6.0.0",
     "eslint-plugin-import": "^2.31.0",
-    "eslint-plugin-import-x": "^4.6.1",
-    "prettier": "3.5.2",
-    "typescript": "^5.8.2",
-    "typescript-eslint": "^8.25.0",
-    "vitest": "^3.0.7"
+    "eslint-plugin-import-x": "^4.10.0",
+    "knip": "^5.46.5",
+    "prettier": "3.5.3",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.29.0",
+    "vitest": "^3.1.1"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }
