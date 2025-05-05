@@ -1,0 +1,132 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`await-remote-run > getWorkflowRunResult > retries on request failures 1`] = `
+[
+  [
+    "Failed to fetch run state, attempt 1...",
+  ],
+  [
+    "Failed to fetch run state, attempt 2...",
+  ],
+]
+`;
+
+exports[`await-remote-run > getWorkflowRunResult > returns a failure if the status is unsupported 1`] = `
+[
+  [
+    "Run status is unsupported: weird",
+  ],
+]
+`;
+
+exports[`await-remote-run > getWorkflowRunResult > returns a failure if the status is unsupported 2`] = `
+[
+  [
+    "Please open an issue with this status value",
+  ],
+]
+`;
+
+exports[`await-remote-run > getWorkflowRunResult > returns a failure on an unsupported conclusion 1`] = `
+[
+  [
+    "Run has failed with unsupported conclusion: weird",
+  ],
+]
+`;
+
+exports[`await-remote-run > getWorkflowRunResult > returns a failure on an unsupported conclusion 2`] = `
+[
+  [
+    "Please open an issue with this conclusion value",
+  ],
+]
+`;
+
+exports[`await-remote-run > getWorkflowRunResult > returns a failure on timeout conclusion 1`] = `
+[
+  [
+    "Run has timeout out",
+  ],
+]
+`;
+
+exports[`await-remote-run > getWorkflowRunResult > returns a timeout 1`] = `
+[
+  [
+    "Run is in progress, attempt 1...",
+  ],
+  [
+    "Run is in progress, attempt 2...",
+  ],
+  [
+    "Run is in progress, attempt 3...",
+  ],
+  [
+    "Run is in progress, attempt 4...",
+  ],
+  [
+    "Run is in progress, attempt 5...",
+  ],
+  [
+    "Run is in progress, attempt 6...",
+  ],
+  [
+    "Run is in progress, attempt 7...",
+  ],
+  [
+    "Run is in progress, attempt 8...",
+  ],
+  [
+    "Run is in progress, attempt 9...",
+  ],
+  [
+    "Run is in progress, attempt 10...",
+  ],
+]
+`;
+
+exports[`await-remote-run > getWorkflowRunResult > returns the conclusion if available 1`] = `
+[
+  [
+    "Run has failed with conclusion: skipped",
+  ],
+]
+`;
+
+exports[`await-remote-run > handleActionFail > should fetch and log failed jobs from the remote run 2`] = `
+"Job First Job:
+  ID: 0
+  Status: completed
+  Conclusion: failure
+  URL: url
+  Steps (non-success):
+    0: First Step
+      Status: completed
+      Conclusion: failure"
+`;
+
+exports[`await-remote-run > handleActionFail > should fetch and log failed jobs from the remote run 3`] = `
+"Job Second Job:
+  ID: 0
+  Status: completed
+  Conclusion: failure
+  URL: url
+  Steps (non-success):
+"
+`;
+
+exports[`await-remote-run > handleActionFail > should only log steps that did not succeed 2`] = `
+"Job First Job:
+  ID: 0
+  Status: completed
+  Conclusion: failure
+  URL: url
+  Steps (non-success):
+    1: Second Step
+      Status: completed
+      Conclusion: failure
+    2: Third Step
+      Status: completed
+      Conclusion: skipped"
+`;
