@@ -11,19 +11,20 @@
   },
   "packageRules": [
     {
+      "matchManagers": ["github-actions"],
+      "automerge": true
+    },
+    {
       "matchDepTypes": ["devDependencies"],
       "automerge": true
     },
     {
+      "matchDepTypes": ["dependencies"],
       "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
       "automerge": true
-    },
-    {
-      "matchUpdateTypes": ["major"]
     }
   ],
   "vulnerabilityAlerts": {
-    "labels": ["security"],
-    "automerge": true
+    "labels": ["security"]
   }
 }
