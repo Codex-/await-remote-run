@@ -19,7 +19,7 @@ Once you have configured your remote repository to work as expected with the `re
 ```yaml
 steps:
   - name: Dispatch an action and get the run ID
-    uses: codex-/return-dispatch@v1
+    uses: codex-/return-dispatch@v2
     id: return_dispatch
     with:
       token: ${{ github.token }}
@@ -27,7 +27,7 @@ steps:
       owner: repository-owner
       workflow: automation-test.yml
   - name: Await Run ID ${{ steps.return_dispatch.outputs.run_id }}
-    uses: Codex-/await-remote-run@v1.0.0
+    uses: Codex-/await-remote-run@v1
     with:
       token: ${{ github.token }}
       repo: return-dispatch
