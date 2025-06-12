@@ -14,7 +14,7 @@ An example using both of these actions is documented below.
 
 ## Usage
 
-Once you have configured your remote repository to work as expected with the `return-dispatch` action, include `await-remote-run` as described below.
+Once you have configured your remote repository to work as expected with the `return-dispatch` action (**including accepting and echoing back the distinct_id input in your target workflow**), include `await-remote-run` as described below.
 
 ```yaml
 steps:
