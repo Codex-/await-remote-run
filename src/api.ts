@@ -2,6 +2,7 @@ import * as core from "@actions/core";
 import * as github from "@actions/github";
 
 import { type ActionConfig, getConfig } from "./action.ts";
+import { withEtag } from "./etags.js";
 
 type Octokit = ReturnType<(typeof github)["getOctokit"]>;
 
@@ -38,14 +39,19 @@ export async function getWorkflowRunState(
   runId: number,
 ): Promise<WorkflowRunState> {
   try {
-    // https://docs.github.com/en/rest/reference/actions#get-a-workflow-run
-    const response = await octokit.rest.actions.getWorkflowRun({
-      owner: config.owner,
-      repo: config.repo,
-      run_id: runId,
-    });
+    const response = await withEtag(
+      "getWorkflowRun",
+      {
+        owner: config.owner,
+        repo: config.repo,
+        run_id: runId,
+      },
+      async (params) => {
+        // https://docs.github.com/en/rest/reference/actions#get-a-workflow-run
+        return await octokit.rest.actions.getWorkflowRun(params);
+      },
+    );
 
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     if (response.status !== 200) {
       throw new Error(
         `Failed to get Workflow Run state, expected 200 but received ${response.status}`,
