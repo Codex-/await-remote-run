@@ -2,7 +2,7 @@ import * as core from "@actions/core";
 import * as github from "@actions/github";
 
 import { type ActionConfig, getConfig } from "./action.ts";
-import { withEtag } from "./etags.js";
+import { withEtag } from "./etags.ts";
 
 type Octokit = ReturnType<(typeof github)["getOctokit"]>;
 
@@ -48,7 +48,7 @@ export async function getWorkflowRunState(
       },
       async (params) => {
         // https://docs.github.com/en/rest/reference/actions#get-a-workflow-run
-        return await octokit.rest.actions.getWorkflowRun(params);
+        return octokit.rest.actions.getWorkflowRun(params);
       },
     );
 

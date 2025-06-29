@@ -18,7 +18,7 @@ import {
   init,
   retryOnError,
 } from "./api.ts";
-import { clearEtags } from "./etags.js";
+import { clearEtags } from "./etags.ts";
 
 vi.mock("@actions/core");
 vi.mock("@actions/github");
