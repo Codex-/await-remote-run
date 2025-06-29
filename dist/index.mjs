@@ -23919,6 +23919,41 @@ function getNumberFromValue(value) {
 // src/api.ts
 var core2 = __toESM(require_core(), 1);
 var github = __toESM(require_github(), 1);
+
+// src/etags.ts
+var etagStore = /* @__PURE__ */ new Map();
+async function withEtag(endpoint, params, requester) {
+  const { etag, savedResponse } = getEtag(endpoint, params) ?? {};
+  const paramsWithEtag = { ...params };
+  if (etag)
+    paramsWithEtag.headers = {
+      "If-None-Match": etag,
+      ...params.headers ?? {}
+    };
+  const response = await requester(paramsWithEtag);
+  if (response.status === 304 && etag && etag === extractEtag(response) && savedResponse !== void 0) {
+    return savedResponse;
+  }
+  rememberEtag(endpoint, params, response);
+  return response;
+}
+function extractEtag(response) {
+  if ("string" !== typeof response.headers.etag) return;
+  return response.headers.etag.split('"')[1] ?? "";
+}
+function getEtag(endpoint, params) {
+  return etagStore.get(JSON.stringify({ endpoint, params }));
+}
+function rememberEtag(endpoint, params, response) {
+  const etag = extractEtag(response);
+  if (!etag) return;
+  etagStore.set(JSON.stringify({ endpoint, params }), {
+    etag,
+    savedResponse: response
+  });
+}
+
+// src/api.ts
 var config;
 var octokit;
 function init(cfg) {
@@ -23927,11 +23962,17 @@ function init(cfg) {
 }
 async function getWorkflowRunState(runId) {
   try {
-    const response = await octokit.rest.actions.getWorkflowRun({
-      owner: config.owner,
-      repo: config.repo,
-      run_id: runId
-    });
+    const response = await withEtag(
+      "getWorkflowRun",
+      {
+        owner: config.owner,
+        repo: config.repo,
+        run_id: runId
+      },
+      async (params) => {
+        return octokit.rest.actions.getWorkflowRun(params);
+      }
+    );
     if (response.status !== 200) {
       throw new Error(
         `Failed to get Workflow Run state, expected 200 but received ${response.status}`
