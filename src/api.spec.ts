@@ -18,6 +18,7 @@ import {
   init,
   retryOnError,
 } from "./api.ts";
+import { clearEtags } from "./etags.ts";
 
 vi.mock("@actions/core");
 vi.mock("@actions/github");
@@ -25,6 +26,7 @@ vi.mock("@actions/github");
 interface MockResponse {
   data: any;
   status: number;
+  headers: Record<string, string>;
 }
 
 const mockOctokit = {
@@ -39,6 +41,10 @@ const mockOctokit = {
     },
   },
 };
+
+afterEach(() => {
+  clearEtags();
+});
 
 describe("API", () => {
   const cfg = {
@@ -72,6 +78,7 @@ describe("API", () => {
         Promise.resolve({
           data: mockData,
           status: 200,
+          headers: {},
         }),
       );
 
@@ -86,12 +93,102 @@ describe("API", () => {
         Promise.resolve({
           data: undefined,
           status: errorStatus,
+          headers: {},
         }),
       );
 
       await expect(getWorkflowRunState(0)).rejects.toThrow(
         `Failed to get Workflow Run state, expected 200 but received ${errorStatus}`,
       );
+    });
+
+    it("should send the previous etag in the If-None-Match header", async () => {
+      const mockData = {
+        status: "completed",
+        conclusion: "cancelled",
+      };
+      const etag =
+        "37c2311495bbea359329d0bb72561bdb2b2fffea1b7a54f696b5a287e7ccad1e";
+      let submittedEtag = null;
+      vi.spyOn(mockOctokit.rest.actions, "getWorkflowRun").mockReturnValue(
+        Promise.resolve({
+          data: mockData,
+          status: 200,
+          headers: {},
+        }),
+      );
+      vi.spyOn(mockOctokit.rest.actions, "getWorkflowRun").mockImplementation(
+        ({ headers }) => {
+          if (headers?.["If-None-Match"]) {
+            submittedEtag = headers["If-None-Match"];
+            return Promise.resolve({
+              data: null,
+              status: 304,
+              headers: {
+                etag: `W/"${submittedEtag}"`,
+              },
+            });
+          }
+          return Promise.resolve({
+            data: mockData,
+            status: 200,
+            headers: {
+              etag: `W/"${etag}"`,
+            },
+          });
+        },
+      );
+
+      // Behaviour
+      // First API call will return 200 with an etag response header
+      const state = await getWorkflowRunState(123456);
+      expect(state.conclusion).toStrictEqual("cancelled");
+      expect(state.status).toStrictEqual("completed");
+      // Second API call with same parameters should pass the If-None-Match header
+      const state2 = await getWorkflowRunState(123456);
+      expect(state2.conclusion).toStrictEqual(mockData.conclusion);
+      expect(state2.status).toStrictEqual(mockData.status);
+    });
+
+    it("should not send the previous etag in the If-None-Match header when different request params are used", async () => {
+      const mockData = {
+        status: "completed",
+        conclusion: "cancelled",
+      };
+      const etag =
+        "37c2311495bbea359329d0bb72561bdb2b2fffea1b7a54f696b5a287e7ccad1e";
+      let submittedEtag = null;
+      vi.spyOn(mockOctokit.rest.actions, "getWorkflowRun").mockImplementation(
+        ({ headers }) => {
+          if (headers?.["If-None-Match"]) {
+            submittedEtag = headers["If-None-Match"];
+            return Promise.resolve({
+              data: null,
+              status: 304,
+              headers: {
+                etag: `W/"${submittedEtag}"`,
+              },
+            });
+          }
+          return Promise.resolve({
+            data: mockData,
+            status: 200,
+            headers: {
+              etag: `W/"${etag}"`,
+            },
+          });
+        },
+      );
+
+      // Behaviour
+      // First API call will return 200 with an etag response header
+      const state = await getWorkflowRunState(123456);
+      expect(state.conclusion).toStrictEqual("cancelled");
+      expect(state.status).toStrictEqual("completed");
+      // Second API call, without If-None-Match header because of different parameters
+      const state2 = await getWorkflowRunState(123457);
+      expect(state2.conclusion).toStrictEqual("cancelled");
+      expect(state2.status).toStrictEqual("completed");
     });
   });
 
@@ -132,6 +229,7 @@ describe("API", () => {
           Promise.resolve({
             data: mockData,
             status: 200,
+            headers: {},
           }),
         );
 
@@ -154,6 +252,7 @@ describe("API", () => {
           Promise.resolve({
             data: undefined,
             status: errorStatus,
+            headers: {},
           }),
         );
 
@@ -171,6 +270,7 @@ describe("API", () => {
           Promise.resolve({
             data: mockData,
             status: 200,
+            headers: {},
           }),
         );
 
@@ -209,6 +309,7 @@ describe("API", () => {
           Promise.resolve({
             data: inProgressMockData,
             status: 200,
+            headers: {},
           }),
         );
 
@@ -226,6 +327,7 @@ describe("API", () => {
           Promise.resolve({
             data: inProgressMockData,
             status: 200,
+            headers: {},
           }),
         );
 
@@ -242,6 +344,7 @@ describe("API", () => {
           Promise.resolve({
             data: undefined,
             status: errorStatus,
+            headers: {},
           }),
         );
 
@@ -260,6 +363,7 @@ describe("API", () => {
           Promise.resolve({
             data: inProgressMockData,
             status: 200,
+            headers: {},
           }),
         );
 
@@ -277,6 +381,7 @@ describe("API", () => {
           Promise.resolve({
             data: inProgressMockData,
             status: 200,
+            headers: {},
           }),
         );
 
@@ -303,6 +408,7 @@ describe("API", () => {
             Promise.resolve({
               data: inProgressMockData,
               status: 200,
+              headers: {},
             }),
           );
 
@@ -323,6 +429,7 @@ describe("API", () => {
               return Promise.resolve({
                 data: inProgressMockData,
                 status: 200,
+                headers: {},
               });
             })
             // First
@@ -332,6 +439,7 @@ describe("API", () => {
               return Promise.resolve({
                 data: inProgressMockData,
                 status: 200,
+                headers: {},
               });
             })
             // Second
@@ -339,6 +447,7 @@ describe("API", () => {
               Promise.resolve({
                 data: inProgressMockData,
                 status: 200,
+                headers: {},
               }),
             );
 
@@ -358,6 +467,7 @@ describe("API", () => {
             Promise.resolve({
               data: inProgressMockData,
               status: 200,
+              headers: {},
             }),
           );
 
