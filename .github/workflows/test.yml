@@ -9,7 +9,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: jdx/mise-action@v2
       - run: pnpm i
       - run: pnpm run build:types
@@ -30,7 +30,7 @@ jobs:
       CI: true
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: jdx/mise-action@v2
       - run: pnpm i
       - name: test
