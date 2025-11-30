@@ -9,7 +9,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Dispatch and return Run ID
         id: return_dispatch
         uses: Codex-/return-dispatch@main
