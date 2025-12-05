@@ -733,7 +733,7 @@ describe("API", () => {
       expect(coreWarningLogMock).toHaveBeenCalledOnce();
       expect(coreWarningLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(`
         "retryOnError: An unexpected error has occurred:
-          name: spy
+          name: Mock
           error: some error"
       `);
       expect(coreWarningLogMock.mock.calls[0]?.[0]).toContain(testFunc.name);
