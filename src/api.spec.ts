@@ -1,24 +1,25 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 import {
+  afterAll,
   afterEach,
   beforeEach,
   describe,
   expect,
   it,
   vi,
-  type MockInstance,
 } from "vitest";
 
 import {
-  getWorkflowRunActiveJobUrl,
-  getWorkflowRunActiveJobUrlRetry,
-  getWorkflowRunFailedJobs,
-  getWorkflowRunState,
+  fetchWorkflowRunActiveJobUrl,
+  fetchWorkflowRunActiveJobUrlRetry,
+  fetchWorkflowRunFailedJobs,
+  fetchWorkflowRunState,
   init,
   retryOnError,
 } from "./api.ts";
 import { clearEtags } from "./etags.ts";
+import { mockLoggingFunctions } from "./test-utils/logging.mock.ts";
 
 vi.mock("@actions/core");
 vi.mock("@actions/github");
@@ -57,6 +58,18 @@ describe("API", () => {
     pollIntervalMs: 2500,
   };
 
+  const {
+    coreErrorLogMock,
+    coreWarningLogMock,
+    coreDebugLogMock,
+    assertOnlyCalled,
+    assertNoneCalled,
+  } = mockLoggingFunctions();
+
+  afterAll(() => {
+    vi.restoreAllMocks();
+  });
+
   beforeEach(() => {
     vi.spyOn(core, "getInput").mockReturnValue("");
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
@@ -65,10 +78,10 @@ describe("API", () => {
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    vi.resetAllMocks();
   });
 
-  describe("getWorkflowRunState", () => {
+  describe("fetchWorkflowRunState", () => {
     it("should return the workflow run state for a given run ID", async () => {
       const mockData = {
         status: "completed",
@@ -82,9 +95,21 @@ describe("API", () => {
         }),
       );
 
-      const state = await getWorkflowRunState(123456);
+      // Behaviour
+      const state = await fetchWorkflowRunState(123456);
       expect(state.conclusion).toStrictEqual(mockData.conclusion);
       expect(state.status).toStrictEqual(mockData.status);
+
+      // Logging
+      assertOnlyCalled(coreDebugLogMock);
+      expect(coreDebugLogMock).toHaveBeenCalledOnce();
+      expect(coreDebugLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(`
+        "Fetched Run:
+          Repository: owner/repository
+          Run ID: 123456
+          Status: completed
+          Conclusion: cancelled"
+      `);
     });
 
     it("should throw if a non-200 status is returned", async () => {
@@ -97,9 +122,18 @@ describe("API", () => {
         }),
       );
 
-      await expect(getWorkflowRunState(0)).rejects.toThrow(
-        `Failed to get Workflow Run state, expected 200 but received ${errorStatus}`,
+      // Behaviour
+      await expect(fetchWorkflowRunState(0)).rejects.toThrowError(
+        `Failed to fetch Workflow Run state, expected 200 but received ${errorStatus}`,
       );
+
+      // Logging
+      assertOnlyCalled(coreDebugLogMock, coreErrorLogMock);
+      expect(coreErrorLogMock).toHaveBeenCalledOnce();
+      expect(coreErrorLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
+        `"fetchWorkflowRunState: An unexpected error has occurred: Failed to fetch Workflow Run state, expected 200 but received 401"`,
+      );
+      expect(coreDebugLogMock).toHaveBeenCalledOnce();
     });
 
     it("should send the previous etag in the If-None-Match header", async () => {
@@ -141,11 +175,11 @@ describe("API", () => {
 
       // Behaviour
       // First API call will return 200 with an etag response header
-      const state = await getWorkflowRunState(123456);
+      const state = await fetchWorkflowRunState(123456);
       expect(state.conclusion).toStrictEqual("cancelled");
       expect(state.status).toStrictEqual("completed");
       // Second API call with same parameters should pass the If-None-Match header
-      const state2 = await getWorkflowRunState(123456);
+      const state2 = await fetchWorkflowRunState(123456);
       expect(state2.conclusion).toStrictEqual(mockData.conclusion);
       expect(state2.status).toStrictEqual(mockData.status);
     });
@@ -182,17 +216,17 @@ describe("API", () => {
 
       // Behaviour
       // First API call will return 200 with an etag response header
-      const state = await getWorkflowRunState(123456);
+      const state = await fetchWorkflowRunState(123456);
       expect(state.conclusion).toStrictEqual("cancelled");
       expect(state.status).toStrictEqual("completed");
       // Second API call, without If-None-Match header because of different parameters
-      const state2 = await getWorkflowRunState(123457);
+      const state2 = await fetchWorkflowRunState(123457);
       expect(state2.conclusion).toStrictEqual("cancelled");
       expect(state2.status).toStrictEqual("completed");
     });
   });
 
-  describe("getWorkflowRunJobs", () => {
+  describe("fetchWorkflowRunJobs", () => {
     const mockData = {
       total_count: 1,
       jobs: [
@@ -220,7 +254,7 @@ describe("API", () => {
       ],
     };
 
-    describe("getWorkflowRunFailedJobs", () => {
+    describe("fetchWorkflowRunFailedJobs", () => {
       it("should return the jobs for a failed workflow run given a run ID", async () => {
         vi.spyOn(
           mockOctokit.rest.actions,
@@ -233,14 +267,54 @@ describe("API", () => {
           }),
         );
 
-        const jobs = await getWorkflowRunFailedJobs(123456);
+        // Behaviour
+        const jobs = await fetchWorkflowRunFailedJobs(123456);
         expect(jobs).toHaveLength(1);
-        expect(jobs[0]?.id).toStrictEqual(mockData.jobs[0]?.id);
-        expect(jobs[0]?.name).toStrictEqual(mockData.jobs[0]?.name);
-        expect(jobs[0]?.status).toStrictEqual(mockData.jobs[0]?.status);
-        expect(jobs[0]?.conclusion).toStrictEqual(mockData.jobs[0]?.conclusion);
-        expect(jobs[0]?.url).toStrictEqual(mockData.jobs[0]?.html_url);
-        expect(Array.isArray(jobs[0]?.steps)).toStrictEqual(true);
+        expect(jobs[0]).toMatchSnapshot();
+
+        // Logging
+        assertOnlyCalled(coreDebugLogMock);
+        expect(coreDebugLogMock).toHaveBeenCalledTimes(2);
+        expect(coreDebugLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(`
+          "Fetched Jobs for Run:
+            Repository: owner/repository
+            Run ID: 123456
+            Jobs: [test-run]"
+        `);
+        expect(coreDebugLogMock.mock.calls[1]?.[0]).toMatchInlineSnapshot(`
+          "    Job: test-run
+                ID: 123456789
+                Status: completed
+                Conclusion: failure
+                Steps: [1: Step 1, 6: Step 2]"
+        `);
+      });
+
+      it("should log a warning if no failed jobs are found", async () => {
+        vi.spyOn(
+          mockOctokit.rest.actions,
+          "listJobsForWorkflowRun",
+        ).mockReturnValue(
+          Promise.resolve({
+            headers: {},
+            data: {
+              total_count: 0,
+              jobs: [],
+            },
+            status: 200,
+          }),
+        );
+
+        // Behaviour
+        const jobs = await fetchWorkflowRunFailedJobs(123456);
+        expect(jobs).toHaveLength(0);
+
+        // Logging
+        assertOnlyCalled(coreWarningLogMock);
+        expect(coreWarningLogMock).toHaveBeenCalledOnce();
+        expect(coreWarningLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
+          `"Failed to find failed Jobs for Workflow Run 123456"`,
+        );
       });
 
       it("should throw if a non-200 status is returned", async () => {
@@ -256,9 +330,18 @@ describe("API", () => {
           }),
         );
 
-        await expect(getWorkflowRunFailedJobs(0)).rejects.toThrow(
-          `Failed to get Jobs for Workflow Run, expected 200 but received ${errorStatus}`,
+        // Behaviour
+        await expect(fetchWorkflowRunFailedJobs(0)).rejects.toThrowError(
+          `Failed to fetch Jobs for Workflow Run, expected 200 but received ${errorStatus}`,
         );
+
+        // Logging
+        assertOnlyCalled(coreErrorLogMock, coreDebugLogMock);
+        expect(coreErrorLogMock).toHaveBeenCalledOnce();
+        expect(coreErrorLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
+          `"fetchWorkflowRunFailedJobs: An unexpected error has occurred: Failed to fetch Jobs for Workflow Run, expected 200 but received 401"`,
+        );
+        expect(coreDebugLogMock).toHaveBeenCalledOnce();
       });
 
       it("should return the steps for a failed Job", async () => {
@@ -274,18 +357,30 @@ describe("API", () => {
           }),
         );
 
-        const { steps } = (await getWorkflowRunFailedJobs(123456))[0]!;
-        expect(steps).toHaveLength(mockData.jobs[0]!.steps.length);
-        for (let i = 0; i < mockSteps.length; i++) {
-          expect(steps[i]?.name).toStrictEqual(mockSteps[i]?.name);
-          expect(steps[i]?.number).toStrictEqual(mockSteps[i]?.number);
-          expect(steps[i]?.status).toStrictEqual(mockSteps[i]?.status);
-          expect(steps[i]?.conclusion).toStrictEqual(mockSteps[i]?.conclusion);
-        }
+        // Behaviour
+        const { steps } = (await fetchWorkflowRunFailedJobs(123456))[0]!;
+        expect(steps).toMatchObject(mockSteps);
+
+        // Logging
+        assertOnlyCalled(coreDebugLogMock);
+        expect(coreDebugLogMock).toHaveBeenCalledTimes(2);
+        expect(coreDebugLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(`
+          "Fetched Jobs for Run:
+            Repository: owner/repository
+            Run ID: 123456
+            Jobs: [test-run]"
+        `);
+        expect(coreDebugLogMock.mock.calls[1]?.[0]).toMatchInlineSnapshot(`
+          "    Job: test-run
+                ID: 123456789
+                Status: completed
+                Conclusion: failure
+                Steps: [1: Step 1, 6: Step 2]"
+        `);
       });
     });
 
-    describe("getWorkflowRunActiveJobUrl", () => {
+    describe("fetchWorkflowRunActiveJobUrl", () => {
       let inProgressMockData: any;
 
       beforeEach(() => {
@@ -313,7 +408,7 @@ describe("API", () => {
           }),
         );
 
-        const url = await getWorkflowRunActiveJobUrl(123456);
+        const url = await fetchWorkflowRunActiveJobUrl(123456);
         expect(url).toStrictEqual(mockData.jobs[0]?.html_url);
       });
 
@@ -331,8 +426,19 @@ describe("API", () => {
           }),
         );
 
-        const url = await getWorkflowRunActiveJobUrl(123456);
+        // Behaviour
+        const url = await fetchWorkflowRunActiveJobUrl(123456);
         expect(url).toStrictEqual(mockData.jobs[0]?.html_url);
+
+        // Logging
+        assertOnlyCalled(coreDebugLogMock);
+        expect(coreDebugLogMock).toHaveBeenCalledOnce();
+        expect(coreDebugLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(`
+          "Fetched Jobs for Run:
+            Repository: owner/repository
+            Run ID: 123456
+            Jobs: [test-run (completed)]"
+        `);
       });
 
       it("should throw if a non-200 status is returned", async () => {
@@ -348,9 +454,18 @@ describe("API", () => {
           }),
         );
 
-        await expect(getWorkflowRunActiveJobUrl(0)).rejects.toThrow(
-          `Failed to get Jobs for Workflow Run, expected 200 but received ${errorStatus}`,
+        // Behaviour
+        await expect(fetchWorkflowRunActiveJobUrl(0)).rejects.toThrowError(
+          `Failed to fetch Jobs for Workflow Run, expected 200 but received ${errorStatus}`,
         );
+
+        // Logging
+        assertOnlyCalled(coreErrorLogMock, coreDebugLogMock);
+        expect(coreErrorLogMock).toHaveBeenCalledOnce();
+        expect(coreErrorLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
+          `"fetchWorkflowRunActiveJobUrl: An unexpected error has occurred: Failed to fetch Jobs for Workflow Run, expected 200 but received 401"`,
+        );
+        expect(coreDebugLogMock).toHaveBeenCalledOnce();
       });
 
       it("should return undefined if no in_progress job is found", async () => {
@@ -367,8 +482,21 @@ describe("API", () => {
           }),
         );
 
-        const url = await getWorkflowRunActiveJobUrl(123456);
+        // Behaviour
+        const url = await fetchWorkflowRunActiveJobUrl(123456);
         expect(url).toStrictEqual(undefined);
+
+        // Logging
+        assertOnlyCalled(coreDebugLogMock);
+        expect(coreDebugLogMock).toHaveBeenCalledOnce();
+        expect(coreDebugLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
+          `
+          "Fetched Jobs for Run:
+            Repository: owner/repository
+            Run ID: 123456
+            Jobs: []"
+        `,
+        );
       });
 
       it("should return even if GitHub fails to return a URL", async () => {
@@ -385,11 +513,24 @@ describe("API", () => {
           }),
         );
 
-        const url = await getWorkflowRunActiveJobUrl(123456);
+        // Behaviour
+        const url = await fetchWorkflowRunActiveJobUrl(123456);
         expect(url).toStrictEqual("GitHub failed to return the URL");
+
+        // Logging
+        assertOnlyCalled(coreDebugLogMock);
+        expect(coreDebugLogMock).toHaveBeenCalledOnce();
+        expect(coreDebugLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
+          `
+          "Fetched Jobs for Run:
+            Repository: owner/repository
+            Run ID: 123456
+            Jobs: [test-run (in_progress)]"
+        `,
+        );
       });
 
-      describe("getWorkflowRunActiveJobUrlRetry", () => {
+      describe("fetchWorkflowRunActiveJobUrlRetry", () => {
         beforeEach(() => {
           vi.useFakeTimers();
         });
@@ -412,12 +553,37 @@ describe("API", () => {
             }),
           );
 
-          const urlPromise = getWorkflowRunActiveJobUrlRetry(123456, 100);
+          // Behaviour
+          const urlPromise = fetchWorkflowRunActiveJobUrlRetry(123456, 100);
           vi.advanceTimersByTime(400);
           await vi.advanceTimersByTimeAsync(400);
 
-          const url = await urlPromise;
-          expect(url).toStrictEqual("Unable to fetch URL");
+          const result = await urlPromise;
+
+          if (result.success) {
+            expect.fail();
+          }
+
+          expect(result.success).toStrictEqual(false);
+          expect(result.reason).toStrictEqual("timeout");
+
+          // Logging
+          assertOnlyCalled(coreDebugLogMock);
+          expect(coreDebugLogMock).toHaveBeenCalledTimes(3);
+          expect(coreDebugLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(
+            `
+            "Fetched Jobs for Run:
+              Repository: owner/repository
+              Run ID: 123456
+              Jobs: []"
+          `,
+          );
+          expect(coreDebugLogMock.mock.calls[1]?.[0]).toMatchInlineSnapshot(
+            `"No 'in_progress' or 'completed' Jobs found for Workflow Run 123456, retrying..."`,
+          );
+          expect(coreDebugLogMock.mock.calls[2]?.[0]).toMatchInlineSnapshot(
+            `"Timed out while trying to fetch URL for Workflow Run 123456"`,
+          );
         });
 
         it("should return a message if no job is found within the timeout period", async () => {
@@ -451,12 +617,35 @@ describe("API", () => {
               }),
             );
 
-          const urlPromise = getWorkflowRunActiveJobUrlRetry(123456, 200);
+          // Behaviour
+          const urlPromise = fetchWorkflowRunActiveJobUrlRetry(123456, 200);
           vi.advanceTimersByTime(400);
           await vi.advanceTimersByTimeAsync(400);
 
-          const url = await urlPromise;
-          expect(url).toStrictEqual("Unable to fetch URL");
+          const result = await urlPromise;
+
+          if (result.success) {
+            expect.fail();
+          }
+
+          expect(result.success).toStrictEqual(false);
+          expect(result.reason).toStrictEqual("timeout");
+
+          // Logging
+          assertOnlyCalled(coreDebugLogMock);
+          expect(coreDebugLogMock).toHaveBeenCalledTimes(3);
+          expect(coreDebugLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(`
+            "Fetched Jobs for Run:
+              Repository: owner/repository
+              Run ID: 123456
+              Jobs: []"
+          `);
+          expect(coreDebugLogMock.mock.calls[1]?.[0]).toMatchInlineSnapshot(
+            `"No 'in_progress' or 'completed' Jobs found for Workflow Run 123456, retrying..."`,
+          );
+          expect(coreDebugLogMock.mock.calls[2]?.[0]).toMatchInlineSnapshot(
+            `"Timed out while trying to fetch URL for Workflow Run 123456"`,
+          );
         });
 
         it("should return a URL if an in_progress job is found", async () => {
@@ -471,62 +660,126 @@ describe("API", () => {
             }),
           );
 
-          const urlPromise = getWorkflowRunActiveJobUrlRetry(123456, 200);
+          // Behaviour
+          const urlPromise = fetchWorkflowRunActiveJobUrlRetry(123456, 200);
           vi.advanceTimersByTime(400);
           await vi.advanceTimersByTimeAsync(400);
 
-          const url = await urlPromise;
-          expect(url).toStrictEqual(inProgressMockData.jobs[0]?.html_url);
+          const result = await urlPromise;
+
+          if (!result.success) {
+            expect.fail();
+          }
+
+          expect(result.success).toStrictEqual(true);
+          expect(result.value).toStrictEqual(
+            inProgressMockData.jobs[0]?.html_url,
+          );
+
+          // Logging
+          assertOnlyCalled(coreDebugLogMock);
+          expect(coreDebugLogMock).toHaveBeenCalledOnce();
+          expect(coreDebugLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(`
+            "Fetched Jobs for Run:
+              Repository: owner/repository
+              Run ID: 123456
+              Jobs: [test-run (in_progress)]"
+          `);
         });
       });
     });
   });
 
   describe("retryOnError", () => {
-    let warningLogSpy: MockInstance<typeof console.warn>;
-
     beforeEach(() => {
       vi.useFakeTimers();
-      warningLogSpy = vi.spyOn(core, "warning");
     });
 
     afterEach(() => {
       vi.useRealTimers();
-      warningLogSpy.mockRestore();
+    });
+
+    it("should return a success result", async () => {
+      const testFunc = vi
+        .fn<() => Promise<string>>()
+        .mockImplementation(() => Promise.resolve("completed"));
+
+      // Behaviour
+      const result = await retryOnError(() => testFunc(), 5000);
+      if (!result.success) {
+        expect.fail();
+      }
+      expect(result.success).toStrictEqual(true);
+      expect(result.value).toStrictEqual("completed");
+
+      // Logging
+      assertNoneCalled();
     });
 
     it("should retry a function if it throws an error", async () => {
-      const funcName = "testFunc";
       const errorMsg = "some error";
       const testFunc = vi
         .fn<() => Promise<string>>()
         .mockImplementation(() => Promise.resolve("completed"))
-        .mockImplementationOnce(() => Promise.reject(Error(errorMsg)));
+        .mockImplementationOnce(() => Promise.reject(new Error(errorMsg)));
 
-      const retryPromise = retryOnError(() => testFunc(), funcName);
-
+      // Behaviour
+      const retryPromise = retryOnError(testFunc, 5000);
       // Progress timers to first failure
-      vi.advanceTimersByTime(500);
-      await vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(1000);
 
-      expect(warningLogSpy).toHaveBeenCalledOnce();
-      expect(warningLogSpy).toHaveBeenCalledWith(
-        "retryOnError: An unexpected error has occurred:\n" +
-          `  name: ${funcName}\n` +
-          `  error: ${errorMsg}`,
-      );
+      // Logging
+      assertOnlyCalled(coreWarningLogMock);
+      expect(coreWarningLogMock).toHaveBeenCalledOnce();
+      expect(coreWarningLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(`
+        "retryOnError: An unexpected error has occurred:
+          name: Mock
+          error: some error"
+      `);
+      expect(coreWarningLogMock.mock.calls[0]?.[0]).toContain(testFunc.name);
+      coreWarningLogMock.mockReset();
 
+      // Behaviour
       // Progress timers to second success
-      vi.advanceTimersByTime(500);
-      await vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(1000);
       const result = await retryPromise;
+      if (!result.success) {
+        expect.fail();
+      }
 
-      expect(warningLogSpy).toHaveBeenCalledOnce();
-      expect(result).toStrictEqual("completed");
+      expect(result.success).toStrictEqual(true);
+      expect(result.value).toStrictEqual("completed");
+
+      // Logging
+      assertNoneCalled();
     });
 
-    it("should throw the original error if timed out while calling the function", async () => {
-      const funcName = "testFunc";
+    it("should display a fallback function name if none is available", async () => {
+      const errorMsg = "some error";
+      const testFunc = vi
+        .fn<() => Promise<string>>()
+        .mockImplementationOnce(() => Promise.reject(new Error(errorMsg)));
+
+      // Behaviour
+      // Use anonymous function
+      const retryPromise = retryOnError(() => testFunc(), 5000);
+      // Progress timers to first failure
+      await vi.advanceTimersByTimeAsync(1000);
+      // Clean up promise
+      await retryPromise;
+
+      // Logging
+      assertOnlyCalled(coreWarningLogMock);
+      expect(coreWarningLogMock).toHaveBeenCalledOnce();
+      expect(coreWarningLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(`
+        "retryOnError: An unexpected error has occurred:
+          name: anonymous function
+          error: some error"
+      `);
+      coreWarningLogMock.mockReset();
+    });
+
+    it("should return a timeout result", async () => {
       const errorMsg = "some error";
       const testFunc = vi
         .fn<() => Promise<string>>()
@@ -535,13 +788,20 @@ describe("API", () => {
           throw new Error(errorMsg);
         });
 
-      const retryPromise = retryOnError(() => testFunc(), funcName, 500);
+      // Behaviour
+      const retryPromise = retryOnError(() => testFunc(), 500);
+      await vi.advanceTimersByTimeAsync(2000);
+      const result = await retryPromise;
 
-      vi.advanceTimersByTime(500);
-      // eslint-disable-next-line @typescript-eslint/no-floating-promises
-      vi.advanceTimersByTimeAsync(500);
+      if (result.success) {
+        expect.fail();
+      }
 
-      await expect(retryPromise).rejects.toThrowError("some error");
+      expect(result.success).toStrictEqual(false);
+      expect(result.reason).toStrictEqual("timeout");
+
+      // Logging
+      assertNoneCalled();
     });
   });
 });

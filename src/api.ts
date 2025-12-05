@@ -1,41 +1,33 @@
+/* eslint-disable @typescript-eslint/no-unnecessary-condition */
+
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 
 import { type ActionConfig, getConfig } from "./action.ts";
 import { withEtag } from "./etags.ts";
+import type {
+  Result,
+  WorkflowRunConclusion,
+  WorkflowRunStatus,
+} from "./types.ts";
+import { sleep } from "./utils.ts";
 
 type Octokit = ReturnType<(typeof github)["getOctokit"]>;
 
 let config: ActionConfig;
 let octokit: Octokit;
 
-export enum WorkflowRunStatus {
-  Queued = "queued",
-  InProgress = "in_progress",
-  Completed = "completed",
-}
-
-export enum WorkflowRunConclusion {
-  Success = "success",
-  Failure = "failure",
-  Neutral = "neutral",
-  Cancelled = "cancelled",
-  Skipped = "skipped",
-  TimedOut = "timed_out",
-  ActionRequired = "action_required",
-}
-
 export function init(cfg?: ActionConfig): void {
   config = cfg ?? getConfig();
   octokit = github.getOctokit(config.token);
 }
 
-export interface WorkflowRunState {
+interface WorkflowRunState {
   status: WorkflowRunStatus | null;
   conclusion: WorkflowRunConclusion | null;
 }
 
-export async function getWorkflowRunState(
+export async function fetchWorkflowRunState(
   runId: number,
 ): Promise<WorkflowRunState> {
   try {
@@ -47,14 +39,14 @@ export async function getWorkflowRunState(
         run_id: runId,
       },
       async (params) => {
-        // https://docs.github.com/en/rest/reference/actions#get-a-workflow-run
+        // https://docs.github.com/en/rest/actions/workflow-runs#get-a-workflow-run
         return octokit.rest.actions.getWorkflowRun(params);
       },
     );
 
     if (response.status !== 200) {
       throw new Error(
-        `Failed to get Workflow Run state, expected 200 but received ${response.status}`,
+        `Failed to fetch Workflow Run state, expected 200 but received ${response.status}`,
       );
     }
 
@@ -73,16 +65,15 @@ export async function getWorkflowRunState(
   } catch (error) {
     if (error instanceof Error) {
       core.error(
-        `getWorkflowRunState: An unexpected error has occurred: ${error.message}`,
+        `fetchWorkflowRunState: An unexpected error has occurred: ${error.message}`,
       );
-      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-      error.stack && core.debug(error.stack);
+      core.debug(error.stack ?? "");
     }
     throw error;
   }
 }
 
-export interface WorkflowRunJob {
+interface WorkflowRunJob {
   id: number;
   name: string;
   status: "queued" | "in_progress" | "completed" | "waiting";
@@ -91,7 +82,7 @@ export interface WorkflowRunJob {
   url: string | null;
 }
 
-export interface WorkflowRunJobStep {
+interface WorkflowRunJobStep {
   name: string;
   status: string;
   conclusion: string | null;
@@ -103,10 +94,10 @@ type ListJobsForWorkflowRunResponse = Awaited<
   ReturnType<Octokit["rest"]["actions"]["listJobsForWorkflowRun"]>
 >;
 
-async function getWorkflowRunJobs(
+async function fetchWorkflowRunJobs(
   runId: number,
 ): Promise<ListJobsForWorkflowRunResponse> {
-  // https://docs.github.com/en/rest/reference/actions#list-jobs-for-a-workflow-run
+  // https://docs.github.com/en/rest/actions/workflow-jobs#list-jobs-for-a-workflow-run
   const response = await octokit.rest.actions.listJobsForWorkflowRun({
     owner: config.owner,
     repo: config.repo,
@@ -114,21 +105,20 @@ async function getWorkflowRunJobs(
     filter: "latest",
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   if (response.status !== 200) {
     throw new Error(
-      `Failed to get Jobs for Workflow Run, expected 200 but received ${response.status}`,
+      `Failed to fetch Jobs for Workflow Run, expected 200 but received ${response.status}`,
     );
   }
 
   return response;
 }
 
-export async function getWorkflowRunFailedJobs(
+export async function fetchWorkflowRunFailedJobs(
   runId: number,
 ): Promise<WorkflowRunJob[]> {
   try {
-    const response = await getWorkflowRunJobs(runId);
+    const response = await fetchWorkflowRunJobs(runId);
     const fetchedFailedJobs = response.data.jobs.filter(
       (job) => job.conclusion === "failure",
     );
@@ -167,11 +157,11 @@ export async function getWorkflowRunFailedJobs(
     for (const job of jobs) {
       const steps = job.steps.map((step) => `${step.number}: ${step.name}`);
       core.debug(
-        `  Job: ${job.name}\n` +
-          `    ID: ${job.id}\n` +
-          `    Status: ${job.status}\n` +
-          `    Conclusion: ${job.conclusion}\n` +
-          `    Steps: [${steps.join(", ")}]`,
+        `    Job: ${job.name}\n` +
+          `      ID: ${job.id}\n` +
+          `      Status: ${job.status}\n` +
+          `      Conclusion: ${job.conclusion}\n` +
+          `      Steps: [${steps.join(", ")}]`,
       );
     }
 
@@ -179,20 +169,19 @@ export async function getWorkflowRunFailedJobs(
   } catch (error) {
     if (error instanceof Error) {
       core.error(
-        `getWorkflowRunJobFailures: An unexpected error has occurred: ${error.message}`,
+        `fetchWorkflowRunFailedJobs: An unexpected error has occurred: ${error.message}`,
       );
-      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-      error.stack && core.debug(error.stack);
+      core.debug(error.stack ?? "");
     }
     throw error;
   }
 }
 
-export async function getWorkflowRunActiveJobUrl(
+export async function fetchWorkflowRunActiveJobUrl(
   runId: number,
 ): Promise<string | undefined> {
   try {
-    const response = await getWorkflowRunJobs(runId);
+    const response = await fetchWorkflowRunJobs(runId);
     const fetchedInProgressJobs = response.data.jobs.filter(
       (job) => job.status === "in_progress" || job.status === "completed",
     );
@@ -217,68 +206,70 @@ export async function getWorkflowRunActiveJobUrl(
   } catch (error) {
     if (error instanceof Error) {
       core.error(
-        `getWorkflowRunActiveJobUrl: An unexpected error has occurred: ${error.message}`,
+        `fetchWorkflowRunActiveJobUrl: An unexpected error has occurred: ${error.message}`,
       );
-      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-      error.stack && core.debug(error.stack);
+      core.debug(error.stack ?? "");
     }
     throw error;
   }
 }
 
-export async function getWorkflowRunActiveJobUrlRetry(
+export async function fetchWorkflowRunActiveJobUrlRetry(
   runId: number,
   timeout: number,
-): Promise<string> {
+): Promise<Result<string>> {
   const startTime = Date.now();
   let elapsedTime = Date.now() - startTime;
 
   while (elapsedTime < timeout) {
-    elapsedTime = Date.now() - startTime;
+    const url = await fetchWorkflowRunActiveJobUrl(runId);
+    if (url) {
+      return { success: true, value: url };
+    }
+
     core.debug(
       `No 'in_progress' or 'completed' Jobs found for Workflow Run ${runId}, retrying...`,
     );
 
-    const url = await getWorkflowRunActiveJobUrl(runId);
-    if (url) {
-      return url;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await sleep(200);
+    elapsedTime = Date.now() - startTime;
   }
   core.debug(`Timed out while trying to fetch URL for Workflow Run ${runId}`);
 
-  return "Unable to fetch URL";
+  return { success: false, reason: "timeout" };
 }
 
 export async function retryOnError<T>(
   func: () => Promise<T>,
-  name: string,
-  timeout = 5000,
-): Promise<T> {
+  timeoutMs: number,
+  functionName?: string,
+): Promise<Result<T>> {
   const startTime = Date.now();
-  let elapsedTime = Date.now() - startTime;
 
-  while (elapsedTime < timeout) {
-    elapsedTime = Date.now() - startTime;
+  let elapsedTime = 0;
+  while (elapsedTime < timeoutMs) {
     try {
-      return await func();
+      const value = await func();
+      return {
+        success: true,
+        value: value,
+      };
     } catch (error) {
-      if (error instanceof Error) {
-        // We now exceed the time, so throw the error up
-        if (Date.now() - startTime >= timeout) {
-          throw error;
-        }
-
+      if (error instanceof Error && Date.now() - startTime < timeoutMs) {
         core.warning(
           "retryOnError: An unexpected error has occurred:\n" +
-            `  name: ${name}\n` +
+            `  name: ${functionName ?? (func.name || "anonymous function")}\n` +
             `  error: ${error.message}`,
         );
       }
-      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
+
+    await sleep(1000);
+    elapsedTime = Date.now() - startTime;
   }
 
-  throw new Error(`Timeout exceeded while attempting to retry ${name}`);
+  return {
+    success: false,
+    reason: "timeout",
+  };
 }

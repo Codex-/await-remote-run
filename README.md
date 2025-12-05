@@ -50,12 +50,12 @@ The permissions required for this action to function correctly are:
 
 For the sake of transparency please note that this action uses the following API calls:
 
-- [Get a workflow run](https://docs.github.com/en/rest/reference/actions#get-a-workflow-run)
+- [Get a workflow run](https://docs.github.com/en/rest/actions/workflow-runs#get-a-workflow-run)
   - GET `/repos/{owner}/{repo}/actions/runs/{run_id}`
   - Permissions:
     - `repo`
     - `actions:read`
-- [List jobs for a workflow run](https://docs.github.com/en/rest/reference/actions#list-jobs-for-a-workflow-run)
+- [List jobs for a workflow run](https://docs.github.com/en/rest/actions/workflow-jobs#list-jobs-for-a-workflow-run)
   - GET `/repos/{owner}/{repo}/actions/runs/{run_id}/jobs`
   - Permissions:
     - `repo`
