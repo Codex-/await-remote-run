@@ -175,11 +175,11 @@ describe("API", () => {
 
       // Behaviour
       // First API call will return 200 with an etag response header
-      const state = await getWorkflowRunState(123456);
+      const state = await fetchWorkflowRunState(123456);
       expect(state.conclusion).toStrictEqual("cancelled");
       expect(state.status).toStrictEqual("completed");
       // Second API call with same parameters should pass the If-None-Match header
-      const state2 = await getWorkflowRunState(123456);
+      const state2 = await fetchWorkflowRunState(123456);
       expect(state2.conclusion).toStrictEqual(mockData.conclusion);
       expect(state2.status).toStrictEqual(mockData.status);
     });
@@ -216,11 +216,11 @@ describe("API", () => {
 
       // Behaviour
       // First API call will return 200 with an etag response header
-      const state = await getWorkflowRunState(123456);
+      const state = await fetchWorkflowRunState(123456);
       expect(state.conclusion).toStrictEqual("cancelled");
       expect(state.status).toStrictEqual("completed");
       // Second API call, without If-None-Match header because of different parameters
-      const state2 = await getWorkflowRunState(123457);
+      const state2 = await fetchWorkflowRunState(123457);
       expect(state2.conclusion).toStrictEqual("cancelled");
       expect(state2.status).toStrictEqual("completed");
     });
@@ -296,6 +296,7 @@ describe("API", () => {
           "listJobsForWorkflowRun",
         ).mockReturnValue(
           Promise.resolve({
+            headers: {},
             data: {
               total_count: 0,
               jobs: [],
