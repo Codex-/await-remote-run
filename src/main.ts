@@ -6,13 +6,14 @@ import { getWorkflowRunResult, handleActionFail } from "./await-remote-run.ts";
 import * as constants from "./constants.ts";
 import { WorkflowRunConclusion } from "./types.ts";
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   try {
     const startTime = Date.now();
 
     const config = getConfig();
     api.init(config);
 
+    // Attempt to get the active job URL
     const activeJobUrlResult = await api.fetchWorkflowRunActiveJobUrlRetry(
       config.runId,
       constants.WORKFLOW_RUN_ACTIVE_JOB_TIMEOUT_MS,
@@ -29,6 +30,7 @@ async function main(): Promise<void> {
         `  URL: ${activeJobUrlResult.value}`,
     );
 
+    // Await the result
     const runResult = await getWorkflowRunResult({
       startTime,
       pollIntervalMs: config.pollIntervalMs,
