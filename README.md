@@ -30,6 +30,7 @@ steps:
     uses: Codex-/await-remote-run@v1
     with:
       token: ${{ github.token }}
+      ref: target_branch # or refs/heads/target_branch
       repo: return-dispatch
       owner: codex-
       run_id: ${{ steps.return_dispatch.outputs.run_id }}
