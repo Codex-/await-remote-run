@@ -20121,12 +20121,22 @@ function info(message) {
 var RUN_TIMEOUT_SECONDS = 5 * 60;
 var POLL_INTERVAL_MS = 5e3;
 function getConfig() {
+  const runTimeoutSeconds = getNumberFromValue(getInput("run_timeout_seconds")) ?? RUN_TIMEOUT_SECONDS;
+  const cancelTimeoutSeconds = getNumberFromValue(
+    getInput("cancel_timeout_seconds")
+  );
+  if (cancelTimeoutSeconds !== void 0 && cancelTimeoutSeconds >= runTimeoutSeconds) {
+    throw new TypeError(
+      `cancel_timeout_seconds (${cancelTimeoutSeconds}) must be less than run_timeout_seconds (${runTimeoutSeconds}).`
+    );
+  }
   return {
     token: getInput("token", { required: true }),
     repo: getInput("repo", { required: true }),
     owner: getInput("owner", { required: true }),
     runId: getRunIdFromValue(getInput("run_id")),
-    runTimeoutSeconds: getNumberFromValue(getInput("run_timeout_seconds")) ?? RUN_TIMEOUT_SECONDS,
+    runTimeoutSeconds,
+    cancelTimeoutSeconds,
     pollIntervalMs: getNumberFromValue(getInput("poll_interval_ms")) ?? POLL_INTERVAL_MS
   };
 }
@@ -23982,6 +23992,56 @@ async function fetchWorkflowRunState(runId) {
     throw error2;
   }
 }
+function isHttpError(error2) {
+  return error2 instanceof Error && error2.name === "HttpError";
+}
+function isRetryable(error2) {
+  if (error2.status >= 500 || error2.status === 429) {
+    return true;
+  }
+  return error2.status === 403 && isRateLimited(error2);
+}
+function isRateLimited(error2) {
+  const headers = error2.response?.headers;
+  return headers?.["retry-after"] !== void 0 || headers?.["x-ratelimit-remaining"] === "0";
+}
+async function requestWorkflowRunCancel(runId) {
+  try {
+    const response = await octokit.rest.actions.cancelWorkflowRun({
+      owner: config.owner,
+      repo: config.repo,
+      run_id: runId
+    });
+    if (response.status !== 202) {
+      throw new Error(
+        `Failed to request Workflow Run cancellation, expected 202 but received ${response.status}`
+      );
+    }
+    debug(`Requested cancellation of Workflow Run ${runId}`);
+    return { success: true };
+  } catch (error2) {
+    if (isHttpError(error2) && !isRetryable(error2)) {
+      if (error2.status === 409) {
+        info(
+          `Workflow Run ${runId} is not in a cancellable state, continuing...`
+        );
+      } else {
+        warning(
+          `Cancellation of Workflow Run ${runId} was rejected with ${error2.status}, not retrying`
+        );
+      }
+      return { success: false, reason: "rejected" };
+    }
+    warning(
+      `requestWorkflowRunCancel: An unexpected error has occurred:
+  error: ${error2 instanceof Error ? error2.message : String(error2)}`
+    );
+    if (error2 instanceof Error) {
+      debug(error2.stack ?? "");
+    }
+    return { success: false, reason: "failed" };
+  }
+}
 async function fetchWorkflowRunJobs(runId) {
   const response = await octokit.rest.actions.listJobsForWorkflowRun({
     owner: config.owner,
@@ -24206,11 +24266,12 @@ async function getWorkflowRunResult({
   startTime,
   runId,
   runTimeoutMs,
-  pollIntervalMs
+  pollIntervalMs,
+  cancelTimeoutMs
 }) {
   let attemptNo = 0;
-  let elapsedTime = Date.now() - startTime;
-  while (elapsedTime < runTimeoutMs) {
+  let cancelRequested = false;
+  while (Date.now() - startTime < runTimeoutMs) {
     attemptNo++;
     const fetchWorkflowRunStateResult = await retryOnError(
       async () => fetchWorkflowRunState(runId),
@@ -24249,8 +24310,15 @@ async function getWorkflowRunResult({
     } else {
       debug(`Failed to fetch run state, attempt ${attemptNo}...`);
     }
+    const elapsedTime = Date.now() - startTime;
+    if (cancelTimeoutMs !== void 0 && !cancelRequested && elapsedTime >= cancelTimeoutMs) {
+      warning(
+        `Cancel timeout exceeded (${elapsedTime}ms), requesting cancellation of Workflow Run ${runId}`
+      );
+      const cancelResult = await requestWorkflowRunCancel(runId);
+      cancelRequested = cancelResult.success || cancelResult.reason === "rejected";
+    }
     await sleep(pollIntervalMs);
-    elapsedTime = Date.now() - startTime;
   }
   return {
     success: false,
@@ -24283,7 +24351,8 @@ async function main() {
       startTime,
       pollIntervalMs: config2.pollIntervalMs,
       runId: config2.runId,
-      runTimeoutMs: config2.runTimeoutSeconds * 1e3
+      runTimeoutMs: config2.runTimeoutSeconds * 1e3,
+      cancelTimeoutMs: config2.cancelTimeoutSeconds === void 0 ? void 0 : config2.cancelTimeoutSeconds * 1e3
     });
     if (!runResult.success) {
       const elapsedTime = Date.now() - startTime;
