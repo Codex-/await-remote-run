@@ -46,7 +46,7 @@
     "eslint-import-resolver-typescript": "4.4.5",
     "eslint-plugin-import": "2.32.0",
     "eslint-plugin-import-x": "4.17.1",
-    "knip": "5.88.1",
+    "knip": "6.29.0",
     "prettier": "3.9.6",
     "typescript": "6.0.3",
     "typescript-eslint": "8.65.0",
