@@ -3,6 +3,7 @@ import * as core from "@actions/core";
 import {
   fetchWorkflowRunFailedJobs,
   fetchWorkflowRunState,
+  requestWorkflowRunCancel,
   retryOnError,
 } from "./api.ts";
 import {
@@ -115,12 +116,14 @@ interface RunOpts {
   pollIntervalMs: number;
   runId: number;
   runTimeoutMs: number;
+  cancelTimeoutMs?: number;
 }
 export async function getWorkflowRunResult({
   startTime,
   runId,
   runTimeoutMs,
   pollIntervalMs,
+  cancelTimeoutMs,
 }: RunOpts): Promise<
   Result<
     | { status: WorkflowRunStatus.Completed; conclusion: WorkflowRunConclusion }
@@ -128,8 +131,8 @@ export async function getWorkflowRunResult({
   >
 > {
   let attemptNo = 0;
-  let elapsedTime = Date.now() - startTime;
-  while (elapsedTime < runTimeoutMs) {
+  let cancelRequested = false;
+  while (Date.now() - startTime < runTimeoutMs) {
     attemptNo++;
 
     const fetchWorkflowRunStateResult = await retryOnError(
@@ -179,8 +182,23 @@ export async function getWorkflowRunResult({
       core.debug(`Failed to fetch run state, attempt ${attemptNo}...`);
     }
 
+    const elapsedTime = Date.now() - startTime;
+    if (
+      cancelTimeoutMs !== undefined &&
+      !cancelRequested &&
+      elapsedTime >= cancelTimeoutMs
+    ) {
+      core.warning(
+        `Cancel timeout exceeded (${elapsedTime}ms), requesting cancellation of Workflow Run ${runId}`,
+      );
+      const cancelResult = await requestWorkflowRunCancel(runId);
+      // A failed request may be transient, so leave the request outstanding for
+      // the next poll to retry within the remaining run timeout.
+      cancelRequested =
+        cancelResult.success || cancelResult.reason === "rejected";
+    }
+
     await sleep(pollIntervalMs);
-    elapsedTime = Date.now() - startTime;
   }
 
   return {

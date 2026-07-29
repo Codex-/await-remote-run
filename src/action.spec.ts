@@ -20,6 +20,7 @@ describe("Action", () => {
         owner: "owner",
         run_id: "123456",
         run_timeout_seconds: "300",
+        cancel_timeout_seconds: "",
         poll_interval_ms: "2500",
       };
 
@@ -36,6 +37,8 @@ describe("Action", () => {
             return mockEnvConfig.run_id;
           case "run_timeout_seconds":
             return mockEnvConfig.run_timeout_seconds;
+          case "cancel_timeout_seconds":
+            return mockEnvConfig.cancel_timeout_seconds;
           case "poll_interval_ms":
             return mockEnvConfig.poll_interval_ms;
           default:
@@ -59,7 +62,62 @@ describe("Action", () => {
       expect(config.owner).toStrictEqual("owner");
       expect(config.runId).toStrictEqual(123456);
       expect(config.runTimeoutSeconds).toStrictEqual(300);
+      expect(config.cancelTimeoutSeconds).toBeUndefined();
       expect(config.pollIntervalMs).toStrictEqual(2500);
+
+      // Logging
+      assertNoneCalled();
+    });
+
+    it("should return cancel_timeout_seconds if one is supplied", () => {
+      mockEnvConfig.cancel_timeout_seconds = "120";
+
+      // Behaviour
+      const config: ActionConfig = getConfig();
+      expect(config.cancelTimeoutSeconds).toStrictEqual(120);
+
+      // Logging
+      assertNoneCalled();
+    });
+
+    it.each(["0", "-1"])(
+      "should throw if cancel_timeout_seconds (%s) is not positive",
+      (cancelTimeoutSeconds) => {
+        mockEnvConfig.cancel_timeout_seconds = cancelTimeoutSeconds;
+
+        // Behaviour
+        expect(() => getConfig()).toThrow(
+          `cancel_timeout_seconds (${cancelTimeoutSeconds}) must be a positive number.`,
+        );
+
+        // Logging
+        assertNoneCalled();
+      },
+    );
+
+    it.each(["300", "301"])(
+      "should throw if cancel_timeout_seconds (%s) is not less than run_timeout_seconds",
+      (cancelTimeoutSeconds) => {
+        mockEnvConfig.cancel_timeout_seconds = cancelTimeoutSeconds;
+
+        // Behaviour
+        expect(() => getConfig()).toThrow(
+          `cancel_timeout_seconds (${cancelTimeoutSeconds}) must be less than run_timeout_seconds (300).`,
+        );
+
+        // Logging
+        assertNoneCalled();
+      },
+    );
+
+    it("should compare cancel_timeout_seconds against the default run_timeout_seconds", () => {
+      mockEnvConfig.run_timeout_seconds = "";
+      mockEnvConfig.cancel_timeout_seconds = "600";
+
+      // Behaviour
+      expect(() => getConfig()).toThrow(
+        "cancel_timeout_seconds (600) must be less than run_timeout_seconds (300).",
+      );
 
       // Logging
       assertNoneCalled();

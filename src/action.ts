@@ -34,6 +34,15 @@ export interface ActionConfig {
   runTimeoutSeconds: number;
 
   /**
+   * Time until requesting cancellation of the remote run.
+   *
+   * Must be less than `runTimeoutSeconds`.
+   *
+   * @default undefined
+   */
+  cancelTimeoutSeconds?: number;
+
+  /**
    * Frequency to poll the action for a status.
    * @default 2500
    */
@@ -41,14 +50,36 @@ export interface ActionConfig {
 }
 
 export function getConfig(): ActionConfig {
+  const runTimeoutSeconds =
+    getNumberFromValue(core.getInput("run_timeout_seconds")) ??
+    RUN_TIMEOUT_SECONDS;
+  const cancelTimeoutSeconds = getNumberFromValue(
+    core.getInput("cancel_timeout_seconds"),
+  );
+
+  if (cancelTimeoutSeconds !== undefined) {
+    if (cancelTimeoutSeconds <= 0) {
+      throw new TypeError(
+        `cancel_timeout_seconds (${cancelTimeoutSeconds}) must be a positive number.`,
+      );
+    }
+
+    // Cancellation is requested from the polling loop, so a cancel timeout at
+    // or beyond the run timeout would never fire.
+    if (cancelTimeoutSeconds >= runTimeoutSeconds) {
+      throw new TypeError(
+        `cancel_timeout_seconds (${cancelTimeoutSeconds}) must be less than run_timeout_seconds (${runTimeoutSeconds}).`,
+      );
+    }
+  }
+
   return {
     token: core.getInput("token", { required: true }),
     repo: core.getInput("repo", { required: true }),
     owner: core.getInput("owner", { required: true }),
     runId: getRunIdFromValue(core.getInput("run_id")),
-    runTimeoutSeconds:
-      getNumberFromValue(core.getInput("run_timeout_seconds")) ??
-      RUN_TIMEOUT_SECONDS,
+    runTimeoutSeconds,
+    cancelTimeoutSeconds,
     pollIntervalMs:
       getNumberFromValue(core.getInput("poll_interval_ms")) ?? POLL_INTERVAL_MS,
   };

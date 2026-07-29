@@ -37,6 +37,7 @@ describe("main", () => {
     owner: "owner",
     runId: 123456,
     runTimeoutSeconds: 300,
+    cancelTimeoutSeconds: undefined,
     pollIntervalMs: 2500,
   };
 
@@ -129,6 +130,7 @@ describe("main", () => {
       pollIntervalMs: testCfg.pollIntervalMs,
       runId: testCfg.runId,
       runTimeoutMs: testCfg.runTimeoutSeconds * 1000,
+      cancelTimeoutMs: undefined,
     });
 
     // Result
@@ -149,6 +151,39 @@ describe("main", () => {
         Status: completed
         Conclusion: success"
     `);
+  });
+
+  it("should pass the cancel timeout through when configured", async () => {
+    actionGetConfigMock.mockReturnValue({
+      ...testCfg,
+      cancelTimeoutSeconds: 120,
+    });
+    apiFetchWorkflowRunActiveJobUrlRetry.mockResolvedValue({
+      success: true,
+      value: "test-url",
+    });
+    awaitRemoteRunGetWorkflowRunResult.mockResolvedValue({
+      success: true,
+      value: {
+        status: WorkflowRunStatus.Completed,
+        conclusion: WorkflowRunConclusion.Success,
+      },
+    });
+
+    await main();
+
+    // Behaviour
+    expect(awaitRemoteRunGetWorkflowRunResult).toHaveBeenCalledOnce();
+    expect(awaitRemoteRunGetWorkflowRunResult).toHaveBeenCalledWith({
+      startTime: Date.now(),
+      pollIntervalMs: testCfg.pollIntervalMs,
+      runId: testCfg.runId,
+      runTimeoutMs: testCfg.runTimeoutSeconds * 1000,
+      cancelTimeoutMs: 120_000,
+    });
+
+    // Logging
+    assertOnlyCalled(coreInfoLogMock);
   });
 
   it("should warn and continue if the active job URL fetch times out", async () => {
