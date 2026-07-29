@@ -35,8 +35,15 @@ steps:
       owner: codex-
       run_id: ${{ steps.return_dispatch.outputs.run_id }}
       run_timeout_seconds: 300 # Optional
+      cancel_timeout_seconds: 240 # Optional
       poll_interval_ms: 5000 # Optional
 ```
+
+### Cancelling the remote run
+
+Giving up on a remote run leaves it running, which is a problem if your workflow tears down something that run depends on, such as a test environment.
+
+Set `cancel_timeout_seconds` to request cancellation once that much time has elapsed. It must be less than `run_timeout_seconds`, the difference being how long this action keeps polling to observe the resulting `cancelled` conclusion. Cancellation requires `actions:write` and is asynchronous, so the remote run may take some time to wind down.
 
 ### Permissions Required
 
@@ -46,6 +53,8 @@ The permissions required for this action to function correctly are:
   - You may get away with simply having `repo:public_repo`
   - `repo` is definitely needed if the repository is private.
 - `actions:read`
+- `actions:write`
+  - Only required when using `cancel_timeout_seconds`
 
 ### APIs Used
 
@@ -61,6 +70,11 @@ For the sake of transparency please note that this action uses the following API
   - Permissions:
     - `repo`
     - `actions:read`
+- [Cancel a workflow run](https://docs.github.com/en/rest/actions/workflow-runs#cancel-a-workflow-run), only if using `cancel_timeout_seconds`
+  - POST `/repos/{owner}/{repo}/actions/runs/{run_id}/cancel`
+  - Permissions:
+    - `repo`
+    - `actions:write`
 
 For more information please see [api.ts](./src/api.ts).
 

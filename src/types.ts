@@ -52,6 +52,13 @@ interface ResultStatusPending {
   value: WorkflowRunStatus;
 }
 
+/**
+ * Rejected requests will continue to be rejected.
+ * Failed requests can be retried and eventually succeed.
+ */
+export type WorkflowRunCancelResult =
+  { success: true } | { success: false; reason: "rejected" | "failed" };
+
 export type WorkflowRunConclusionResult =
   | ResultSuccess<WorkflowRunConclusion>
   | ResultConclusionInconclusive

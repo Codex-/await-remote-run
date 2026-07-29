@@ -20,6 +20,10 @@ inputs:
   run_timeout_seconds:
     description: Time until giving up on the run.
     default: 300
+  cancel_timeout_seconds:
+    description: >-
+      Time until requesting cancellation of the remote run, if set.
+      Must be less than run_timeout_seconds.
   poll_interval_ms:
     description: Frequency to poll the run for a status.
     default: 5000

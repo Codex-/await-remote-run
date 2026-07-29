@@ -6,6 +6,7 @@ import * as constants from "./constants.ts";
 import { withEtag } from "./etags.ts";
 import type {
   Result,
+  WorkflowRunCancelResult,
   WorkflowRunConclusion,
   WorkflowRunStatus,
 } from "./types.ts";
@@ -69,6 +70,109 @@ export async function fetchWorkflowRunState(
       core.debug(error.stack ?? "");
     }
     throw error;
+  }
+}
+
+/**
+ * Close-enough effort recreation of the error type Octokit throws for any
+ * failed request.
+ *
+ * This also includes ones that never reach GitHub.
+ */
+interface HttpError extends Error {
+  status: number;
+  response?: { headers: Record<string, string | undefined> };
+}
+
+function isHttpError(error: unknown): error is HttpError {
+  // We'll narrow this type based on the name rather than the actual
+  // proto from `@octokit/request-error`. Adding the dependency can
+  // cause problematic `instanceof` behaviour if we end up with both
+  // the transitive and depended exports being bundled.
+  return error instanceof Error && error.name === "HttpError";
+}
+
+/**
+ * Whether a failed request could plausibly succeed if it were tried again.
+ */
+function isRetryable(error: HttpError): boolean {
+  if (error.status >= 500 || error.status === 429) {
+    return true;
+  }
+
+  // A 403 is either a rate limit or a permission problem, and only the former
+  // resolves itself.
+  return error.status === 403 && isRateLimited(error);
+}
+
+/**
+ * Rate limiting is reported as a 403 or a 429, identified by an exhausted
+ * remaining count or by being told when to try again.
+ * See: https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api#exceeding-the-rate-limit
+ */
+function isRateLimited(error: HttpError): boolean {
+  const headers = error.response?.headers;
+  return (
+    headers?.["retry-after"] !== undefined ||
+    headers?.["x-ratelimit-remaining"] === "0"
+  );
+}
+
+/**
+ * Attempt requesting GitHub to cancel a given run.
+ *
+ * As cancellation is asynchronous: a successful result means GitHub accepted the
+ * request, not that the run has stopped. We poll the run state to observe it
+ * reaching the `cancelled` conclusion before resolving.
+ *
+ * Cancellation is best-effort, as a result we don't throw.
+ */
+export async function requestWorkflowRunCancel(
+  runId: number,
+): Promise<WorkflowRunCancelResult> {
+  try {
+    // https://docs.github.com/en/rest/actions/workflow-runs#cancel-a-workflow-run
+    const response = await octokit.rest.actions.cancelWorkflowRun({
+      owner: config.owner,
+      repo: config.repo,
+      run_id: runId,
+    });
+
+    // A non-202 is possible, the types aren't the best
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    if (response.status !== 202) {
+      throw new Error(
+        `Failed to request Workflow Run cancellation, expected 202 but received ${response.status}`,
+      );
+    }
+
+    core.debug(`Requested cancellation of Workflow Run ${runId}`);
+    return { success: true };
+  } catch (error) {
+    if (isHttpError(error) && !isRetryable(error)) {
+      if (error.status === 409) {
+        // The only error the API documents, returned for a run it will not
+        // cancel, such as one that has already concluded.
+        core.info(
+          `Workflow Run ${runId} is not in a cancellable state, continuing...`,
+        );
+      } else {
+        // Most likely a token without `actions:write`, or a run it cannot see.
+        core.warning(
+          `Cancellation of Workflow Run ${runId} was rejected with ${error.status}, not retrying`,
+        );
+      }
+      return { success: false, reason: "rejected" };
+    }
+
+    core.warning(
+      "requestWorkflowRunCancel: An unexpected error has occurred:\n" +
+        `  error: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    if (error instanceof Error) {
+      core.debug(error.stack ?? "");
+    }
+    return { success: false, reason: "failed" };
   }
 }
 

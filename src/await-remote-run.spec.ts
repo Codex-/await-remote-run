@@ -406,12 +406,19 @@ describe("await-remote-run", () => {
       typeof api.fetchWorkflowRunState
     >;
     let apiRetryOnErrorMock: MockInstance<typeof api.retryOnError>;
+    let apiRequestWorkflowRunCancelMock: MockInstance<
+      typeof api.requestWorkflowRunCancel
+    >;
 
     beforeEach(() => {
       vi.useFakeTimers();
 
       apiFetchWorkflowRunStateMock = vi.spyOn(api, "fetchWorkflowRunState");
       apiRetryOnErrorMock = vi.spyOn(api, "retryOnError");
+      apiRequestWorkflowRunCancelMock = vi.spyOn(
+        api,
+        "requestWorkflowRunCancel",
+      );
     });
 
     afterEach(() => {
@@ -627,6 +634,170 @@ describe("await-remote-run", () => {
       expect(coreErrorLogMock.mock.calls).toMatchSnapshot();
       expect(coreInfoLogMock).toHaveBeenCalledOnce();
       expect(coreInfoLogMock.mock.calls).toMatchSnapshot();
+    });
+
+    describe("cancellation", () => {
+      const pollIntervalMs = 100;
+      const runTimeoutMs = 1000;
+      const cancelTimeoutMs = 300;
+
+      beforeEach(() => {
+        apiFetchWorkflowRunStateMock.mockResolvedValue({
+          status: WorkflowRunStatus.InProgress,
+          conclusion: null,
+        });
+        apiRetryOnErrorMock.mockImplementation(async (toTry) => ({
+          success: true,
+          value: await toTry(),
+        }));
+      });
+
+      it("requests cancellation once the cancel timeout elapses", async () => {
+        apiRequestWorkflowRunCancelMock.mockImplementation(() => {
+          // Mirror the remote run reacting to the cancellation, so the
+          // subsequent poll observes the conclusion.
+          apiFetchWorkflowRunStateMock.mockResolvedValue({
+            status: WorkflowRunStatus.Completed,
+            conclusion: WorkflowRunConclusion.Cancelled,
+          });
+          return Promise.resolve({ success: true });
+        });
+
+        // Behaviour
+        const getWorkflowRunResultPromise = getWorkflowRunResult({
+          startTime: Date.now(),
+          pollIntervalMs: pollIntervalMs,
+          runId: 0,
+          runTimeoutMs: runTimeoutMs,
+          cancelTimeoutMs: cancelTimeoutMs,
+        });
+
+        // Cancellation is requested on the first poll at or after the cancel
+        // timeout, so it should not have fired one interval earlier.
+        await vi.advanceTimersByTimeAsync(cancelTimeoutMs - pollIntervalMs);
+        expect(apiRequestWorkflowRunCancelMock).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(runTimeoutMs);
+        const result = await getWorkflowRunResultPromise;
+        expect(result).toStrictEqual({
+          success: true,
+          value: {
+            status: WorkflowRunStatus.Completed,
+            conclusion: WorkflowRunConclusion.Cancelled,
+          },
+        });
+        expect(apiRequestWorkflowRunCancelMock).toHaveBeenCalledOnce();
+        expect(apiRequestWorkflowRunCancelMock).toHaveBeenCalledWith(0);
+
+        // Logging
+        assertOnlyCalled(
+          coreDebugLogMock,
+          coreWarningLogMock,
+          coreErrorLogMock,
+        );
+        expect(coreWarningLogMock).toHaveBeenCalledOnce();
+        expect(coreWarningLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
+          `"Cancel timeout exceeded (300ms), requesting cancellation of Workflow Run 0"`,
+        );
+      });
+
+      it("does not request cancellation if no cancel timeout is given", async () => {
+        // Behaviour
+        const getWorkflowRunResultPromise = getWorkflowRunResult({
+          startTime: Date.now(),
+          pollIntervalMs: pollIntervalMs,
+          runId: 0,
+          runTimeoutMs: runTimeoutMs,
+        });
+        await vi.advanceTimersByTimeAsync(runTimeoutMs);
+        const result = await getWorkflowRunResultPromise;
+
+        expect(result).toStrictEqual({ success: false, reason: "timeout" });
+        expect(apiRequestWorkflowRunCancelMock).not.toHaveBeenCalled();
+
+        // Logging
+        assertOnlyCalled(coreDebugLogMock);
+      });
+
+      it("does not retry a rejected cancellation", async () => {
+        apiRequestWorkflowRunCancelMock.mockResolvedValue({
+          success: false,
+          reason: "rejected",
+        });
+
+        // Behaviour
+        const getWorkflowRunResultPromise = getWorkflowRunResult({
+          startTime: Date.now(),
+          pollIntervalMs: pollIntervalMs,
+          runId: 0,
+          runTimeoutMs: runTimeoutMs,
+          cancelTimeoutMs: cancelTimeoutMs,
+        });
+        await vi.advanceTimersByTimeAsync(runTimeoutMs);
+        const result = await getWorkflowRunResultPromise;
+
+        expect(result).toStrictEqual({ success: false, reason: "timeout" });
+        expect(apiRequestWorkflowRunCancelMock).toHaveBeenCalledOnce();
+
+        // Logging
+        assertOnlyCalled(coreDebugLogMock, coreWarningLogMock);
+        expect(coreWarningLogMock).toHaveBeenCalledOnce();
+      });
+
+      it("retries a failed cancellation on the next poll", async () => {
+        apiRequestWorkflowRunCancelMock
+          .mockResolvedValue({ success: true })
+          .mockResolvedValueOnce({ success: false, reason: "failed" });
+
+        // Behaviour
+        const getWorkflowRunResultPromise = getWorkflowRunResult({
+          startTime: Date.now(),
+          pollIntervalMs: pollIntervalMs,
+          runId: 0,
+          runTimeoutMs: runTimeoutMs,
+          cancelTimeoutMs: cancelTimeoutMs,
+        });
+        await vi.advanceTimersByTimeAsync(runTimeoutMs);
+        const result = await getWorkflowRunResultPromise;
+
+        expect(result).toStrictEqual({ success: false, reason: "timeout" });
+        // The failed request is retried, the successful one is not.
+        expect(apiRequestWorkflowRunCancelMock).toHaveBeenCalledTimes(2);
+
+        // Logging
+        assertOnlyCalled(coreDebugLogMock, coreWarningLogMock);
+        expect(coreWarningLogMock).toHaveBeenCalledTimes(2);
+      });
+
+      it("does not request cancellation if the run concludes first", async () => {
+        apiFetchWorkflowRunStateMock.mockResolvedValue({
+          status: WorkflowRunStatus.Completed,
+          conclusion: WorkflowRunConclusion.Success,
+        });
+
+        // Behaviour
+        const getWorkflowRunResultPromise = getWorkflowRunResult({
+          startTime: Date.now(),
+          pollIntervalMs: pollIntervalMs,
+          runId: 0,
+          runTimeoutMs: runTimeoutMs,
+          cancelTimeoutMs: cancelTimeoutMs,
+        });
+        await vi.advanceTimersByTimeAsync(runTimeoutMs);
+        const result = await getWorkflowRunResultPromise;
+
+        expect(result).toStrictEqual({
+          success: true,
+          value: {
+            status: WorkflowRunStatus.Completed,
+            conclusion: WorkflowRunConclusion.Success,
+          },
+        });
+        expect(apiRequestWorkflowRunCancelMock).not.toHaveBeenCalled();
+
+        // Logging
+        assertNoneCalled();
+      });
     });
 
     it("returns a timeout", async () => {

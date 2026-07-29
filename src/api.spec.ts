@@ -16,6 +16,7 @@ import {
   fetchWorkflowRunFailedJobs,
   fetchWorkflowRunState,
   init,
+  requestWorkflowRunCancel,
   retryOnError,
 } from "./api.ts";
 import * as constants from "./constants.ts";
@@ -40,9 +41,27 @@ const mockOctokit = {
       listJobsForWorkflowRun: (_req?: any): Promise<MockResponse> => {
         throw new Error("Should be mocked");
       },
+      cancelWorkflowRun: (_req?: any): Promise<MockResponse> => {
+        throw new Error("Should be mocked");
+      },
     },
   },
 };
+
+/**
+ * Octokit identifies a failed request by name rather than by class.
+ */
+function mockHttpError(
+  message: string,
+  status: number,
+  headers: Record<string, string | undefined> = {},
+): Error {
+  return Object.assign(new Error(message), {
+    name: "HttpError",
+    status: status,
+    response: { headers: headers },
+  });
+}
 
 afterEach(() => {
   clearEtags();
@@ -56,11 +75,13 @@ describe("API", () => {
     owner: "owner",
     runId: 123456,
     runTimeoutSeconds: 300,
+    cancelTimeoutSeconds: undefined,
     pollIntervalMs: 2500,
   };
 
   const {
     coreErrorLogMock,
+    coreInfoLogMock,
     coreWarningLogMock,
     coreDebugLogMock,
     assertOnlyCalled,
@@ -224,6 +245,177 @@ describe("API", () => {
       const state2 = await fetchWorkflowRunState(123457);
       expect(state2.conclusion).toStrictEqual("cancelled");
       expect(state2.status).toStrictEqual("completed");
+    });
+  });
+
+  describe("requestWorkflowRunCancel", () => {
+    it("should return success if the cancellation is accepted", async () => {
+      const cancelSpy = vi
+        .spyOn(mockOctokit.rest.actions, "cancelWorkflowRun")
+        .mockResolvedValue({ data: undefined, status: 202, headers: {} });
+
+      // Behaviour
+      const result = await requestWorkflowRunCancel(123456);
+      expect(result).toStrictEqual({ success: true });
+      expect(cancelSpy).toHaveBeenCalledWith({
+        owner: cfg.owner,
+        repo: cfg.repo,
+        run_id: 123456,
+      });
+
+      // Logging
+      assertOnlyCalled(coreDebugLogMock);
+      expect(coreDebugLogMock).toHaveBeenCalledOnce();
+      expect(coreDebugLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
+        `"Requested cancellation of Workflow Run 123456"`,
+      );
+    });
+
+    it("should return rejected if the run cannot be cancelled", async () => {
+      vi.spyOn(mockOctokit.rest.actions, "cancelWorkflowRun").mockRejectedValue(
+        mockHttpError("Conflict", 409),
+      );
+
+      // Behaviour
+      const result = await requestWorkflowRunCancel(123456);
+      expect(result).toStrictEqual({ success: false, reason: "rejected" });
+
+      // Logging
+      assertOnlyCalled(coreInfoLogMock);
+      expect(coreInfoLogMock).toHaveBeenCalledOnce();
+      expect(coreInfoLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
+        `"Workflow Run 123456 is not in a cancellable state, continuing..."`,
+      );
+    });
+
+    // A run cannot become visible or the token gain a scope mid-run, so these
+    // are not worth retrying.
+    it.each([403, 404, 422])(
+      "should return rejected on a %i without retrying",
+      async (status) => {
+        vi.spyOn(
+          mockOctokit.rest.actions,
+          "cancelWorkflowRun",
+        ).mockRejectedValue(mockHttpError("Client Error", status));
+
+        // Behaviour
+        const result = await requestWorkflowRunCancel(123456);
+        expect(result).toStrictEqual({ success: false, reason: "rejected" });
+
+        // Logging
+        assertOnlyCalled(coreWarningLogMock);
+        expect(coreWarningLogMock).toHaveBeenCalledOnce();
+        expect(coreWarningLogMock.mock.lastCall?.[0]).toStrictEqual(
+          `Cancellation of Workflow Run 123456 was rejected with ${status}, not retrying`,
+        );
+      },
+    );
+
+    it("should return failed on a rate limit so it is retried", async () => {
+      vi.spyOn(mockOctokit.rest.actions, "cancelWorkflowRun").mockRejectedValue(
+        mockHttpError("Too Many Requests", 429),
+      );
+
+      // Behaviour
+      const result = await requestWorkflowRunCancel(123456);
+      expect(result).toStrictEqual({ success: false, reason: "failed" });
+
+      // Logging
+      assertOnlyCalled(coreWarningLogMock, coreDebugLogMock);
+      expect(coreWarningLogMock).toHaveBeenCalledOnce();
+    });
+
+    // A 403 is a permission problem unless the rate limit headers say
+    // otherwise, in which case retrying can succeed.
+    it.each([{ "x-ratelimit-remaining": "0" }, { "retry-after": "60" }])(
+      "should return failed on a rate limited 403 (%o)",
+      async (headers) => {
+        vi.spyOn(
+          mockOctokit.rest.actions,
+          "cancelWorkflowRun",
+        ).mockRejectedValue(mockHttpError("Forbidden", 403, headers));
+
+        // Behaviour
+        const result = await requestWorkflowRunCancel(123456);
+        expect(result).toStrictEqual({ success: false, reason: "failed" });
+
+        // Logging
+        assertOnlyCalled(coreWarningLogMock, coreDebugLogMock);
+        expect(coreWarningLogMock).toHaveBeenCalledOnce();
+      },
+    );
+
+    it("should return rejected on a 403 with rate limit remaining", async () => {
+      vi.spyOn(mockOctokit.rest.actions, "cancelWorkflowRun").mockRejectedValue(
+        mockHttpError("Forbidden", 403, { "x-ratelimit-remaining": "4999" }),
+      );
+
+      // Behaviour
+      const result = await requestWorkflowRunCancel(123456);
+      expect(result).toStrictEqual({ success: false, reason: "rejected" });
+
+      // Logging
+      assertOnlyCalled(coreWarningLogMock);
+      expect(coreWarningLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
+        `"Cancellation of Workflow Run 123456 was rejected with 403, not retrying"`,
+      );
+    });
+
+    it("should return failed if the request errors", async () => {
+      vi.spyOn(mockOctokit.rest.actions, "cancelWorkflowRun").mockRejectedValue(
+        mockHttpError("Server Error", 500),
+      );
+
+      // Behaviour
+      const result = await requestWorkflowRunCancel(123456);
+      expect(result).toStrictEqual({ success: false, reason: "failed" });
+
+      // Logging
+      assertOnlyCalled(coreWarningLogMock, coreDebugLogMock);
+      expect(coreWarningLogMock).toHaveBeenCalledOnce();
+      expect(coreWarningLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(`
+        "requestWorkflowRunCancel: An unexpected error has occurred:
+          error: Server Error"
+      `);
+      expect(coreDebugLogMock).toHaveBeenCalledOnce();
+    });
+
+    it("should return failed for a non-request error carrying a status", async () => {
+      // Only a request failure carries a status worth classifying, so anything
+      // else is retried rather than trusted.
+      vi.spyOn(mockOctokit.rest.actions, "cancelWorkflowRun").mockRejectedValue(
+        Object.assign(new Error("Not From Octokit"), { status: 409 }),
+      );
+
+      // Behaviour
+      const result = await requestWorkflowRunCancel(123456);
+      expect(result).toStrictEqual({ success: false, reason: "failed" });
+
+      // Logging
+      assertOnlyCalled(coreWarningLogMock, coreDebugLogMock);
+      expect(coreWarningLogMock).toHaveBeenCalledOnce();
+    });
+
+    it("should return failed if a non-202 status is returned", async () => {
+      vi.spyOn(mockOctokit.rest.actions, "cancelWorkflowRun").mockResolvedValue(
+        {
+          data: undefined,
+          status: 200,
+          headers: {},
+        },
+      );
+
+      // Behaviour
+      const result = await requestWorkflowRunCancel(123456);
+      expect(result).toStrictEqual({ success: false, reason: "failed" });
+
+      // Logging
+      assertOnlyCalled(coreWarningLogMock, coreDebugLogMock);
+      expect(coreWarningLogMock).toHaveBeenCalledOnce();
+      expect(coreWarningLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(`
+        "requestWorkflowRunCancel: An unexpected error has occurred:
+          error: Failed to request Workflow Run cancellation, expected 202 but received 200"
+      `);
     });
   });
 

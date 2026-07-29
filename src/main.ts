@@ -38,6 +38,10 @@ export async function main(): Promise<void> {
       pollIntervalMs: config.pollIntervalMs,
       runId: config.runId,
       runTimeoutMs: config.runTimeoutSeconds * 1000,
+      cancelTimeoutMs:
+        config.cancelTimeoutSeconds === undefined
+          ? undefined
+          : config.cancelTimeoutSeconds * 1000,
     });
     if (!runResult.success) {
       const elapsedTime = Date.now() - startTime;
