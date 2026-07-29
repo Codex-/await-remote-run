@@ -1,9 +1,9 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended", "group:allNonMajor", "schedule:monthly"],
+  "extends": ["config:best-practices", "group:allNonMajor", "schedule:monthly"],
   "timezone": "Pacific/Auckland",
   "labels": ["dependencies"],
-  "rangeStrategy": "bump",
+  "postUpdateOptions": ["pnpmDedupe"],
   "lockFileMaintenance": {
     "enabled": true,
     "automerge": true,
@@ -11,20 +11,18 @@
   },
   "packageRules": [
     {
-      "matchManagers": ["github-actions"],
-      "automerge": true
-    },
-    {
       "matchDepTypes": ["devDependencies"],
       "automerge": true
     },
     {
-      "matchDepTypes": ["dependencies"],
       "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
       "automerge": true
     }
   ],
   "vulnerabilityAlerts": {
-    "labels": ["security"]
+    "labels": ["dependencies", "security"],
+    "automerge": true,
+    "schedule": ["at any time"],
+    "minimumReleaseAge": null
   }
 }
