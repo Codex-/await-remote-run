@@ -2,6 +2,7 @@ import * as core from "@actions/core";
 import * as github from "@actions/github";
 
 import { type ActionConfig, getConfig } from "./action.ts";
+import * as constants from "./constants.ts";
 import { withEtag } from "./etags.ts";
 import type {
   Result,
@@ -236,7 +237,7 @@ export async function fetchWorkflowRunActiveJobUrlRetry(
       `No 'in_progress' or 'completed' Jobs found for Workflow Run ${runId}, retrying...`,
     );
 
-    await sleep(200);
+    await sleep(constants.WORKFLOW_RUN_ACTIVE_JOB_POLL_INTERVAL_MS);
     elapsedTime = Date.now() - startTime;
   }
   core.debug(`Timed out while trying to fetch URL for Workflow Run ${runId}`);
