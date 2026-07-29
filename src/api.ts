@@ -122,8 +122,8 @@ function isRateLimited(error: HttpError): boolean {
  * Attempt requesting GitHub to cancel a given run.
  *
  * As cancellation is asynchronous: a successful result means GitHub accepted the
- * request, not that the run has stopped. We poll the run state to observe it
- * reaching the `cancelled` conclusion before resolving.
+ * request, not that the run has stopped. The caller's polling is what observes
+ * it reaching the `cancelled` conclusion.
  *
  * Cancellation is best-effort, as a result we don't throw.
  */
