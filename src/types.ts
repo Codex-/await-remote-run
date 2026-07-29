@@ -44,9 +44,7 @@ interface ResultUnsupported {
 }
 
 export type WorkflowRunStatusResult =
-  | ResultSuccess<WorkflowRunStatus>
-  | ResultStatusPending
-  | ResultUnsupported;
+  ResultSuccess<WorkflowRunStatus> | ResultStatusPending | ResultUnsupported;
 
 interface ResultStatusPending {
   success: false;
