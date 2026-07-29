@@ -9,10 +9,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Dispatch and return Run ID
         id: return_dispatch
-        uses: Codex-/return-dispatch@main
+        uses: Codex-/return-dispatch@2e404d40b641ba1deb44be941660bb34828e4f6d # main
         with:
           token: ${{ secrets.TOKEN }}
           ref: main
