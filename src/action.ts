@@ -57,15 +57,20 @@ export function getConfig(): ActionConfig {
     core.getInput("cancel_timeout_seconds"),
   );
 
-  // Cancellation is requested from the polling loop, so a cancel timeout at or
-  // beyond the run timeout would never fire.
-  if (
-    cancelTimeoutSeconds !== undefined &&
-    cancelTimeoutSeconds >= runTimeoutSeconds
-  ) {
-    throw new TypeError(
-      `cancel_timeout_seconds (${cancelTimeoutSeconds}) must be less than run_timeout_seconds (${runTimeoutSeconds}).`,
-    );
+  if (cancelTimeoutSeconds !== undefined) {
+    if (cancelTimeoutSeconds <= 0) {
+      throw new TypeError(
+        `cancel_timeout_seconds (${cancelTimeoutSeconds}) must be a positive number.`,
+      );
+    }
+
+    // Cancellation is requested from the polling loop, so a cancel timeout at
+    // or beyond the run timeout would never fire.
+    if (cancelTimeoutSeconds >= runTimeoutSeconds) {
+      throw new TypeError(
+        `cancel_timeout_seconds (${cancelTimeoutSeconds}) must be less than run_timeout_seconds (${runTimeoutSeconds}).`,
+      );
+    }
   }
 
   return {

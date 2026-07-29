@@ -80,6 +80,21 @@ describe("Action", () => {
       assertNoneCalled();
     });
 
+    it.each(["0", "-1"])(
+      "should throw if cancel_timeout_seconds (%s) is not positive",
+      (cancelTimeoutSeconds) => {
+        mockEnvConfig.cancel_timeout_seconds = cancelTimeoutSeconds;
+
+        // Behaviour
+        expect(() => getConfig()).toThrow(
+          `cancel_timeout_seconds (${cancelTimeoutSeconds}) must be a positive number.`,
+        );
+
+        // Logging
+        assertNoneCalled();
+      },
+    );
+
     it.each(["300", "301"])(
       "should throw if cancel_timeout_seconds (%s) is not less than run_timeout_seconds",
       (cancelTimeoutSeconds) => {

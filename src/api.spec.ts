@@ -396,6 +396,20 @@ describe("API", () => {
       expect(coreWarningLogMock).toHaveBeenCalledOnce();
     });
 
+    it("should return failed for an error named HttpError without a status", async () => {
+      vi.spyOn(mockOctokit.rest.actions, "cancelWorkflowRun").mockRejectedValue(
+        Object.assign(new Error("Not From Octokit"), { name: "HttpError" }),
+      );
+
+      // Behaviour
+      const result = await requestWorkflowRunCancel(123456);
+      expect(result).toStrictEqual({ success: false, reason: "failed" });
+
+      // Logging
+      assertOnlyCalled(coreWarningLogMock, coreDebugLogMock);
+      expect(coreWarningLogMock).toHaveBeenCalledOnce();
+    });
+
     it("should return failed if a non-202 status is returned", async () => {
       vi.spyOn(mockOctokit.rest.actions, "cancelWorkflowRun").mockResolvedValue(
         {

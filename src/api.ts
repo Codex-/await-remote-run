@@ -89,7 +89,12 @@ function isHttpError(error: unknown): error is HttpError {
   // proto from `@octokit/request-error`. Adding the dependency can
   // cause problematic `instanceof` behaviour if we end up with both
   // the transitive and depended exports being bundled.
-  return error instanceof Error && error.name === "HttpError";
+  return (
+    error instanceof Error &&
+    error.name === "HttpError" &&
+    "status" in error &&
+    typeof error.status === "number"
+  );
 }
 
 /**

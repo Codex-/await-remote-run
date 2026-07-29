@@ -769,6 +769,32 @@ describe("await-remote-run", () => {
         expect(coreWarningLogMock).toHaveBeenCalledTimes(2);
       });
 
+      it("requests cancellation even while the run state cannot be fetched", async () => {
+        apiRetryOnErrorMock.mockResolvedValue({
+          success: false,
+          reason: "timeout",
+        });
+        apiRequestWorkflowRunCancelMock.mockResolvedValue({ success: true });
+
+        // Behaviour
+        const getWorkflowRunResultPromise = getWorkflowRunResult({
+          startTime: Date.now(),
+          pollIntervalMs: pollIntervalMs,
+          runId: 0,
+          runTimeoutMs: runTimeoutMs,
+          cancelTimeoutMs: cancelTimeoutMs,
+        });
+        await vi.advanceTimersByTimeAsync(runTimeoutMs);
+        const result = await getWorkflowRunResultPromise;
+
+        expect(result).toStrictEqual({ success: false, reason: "timeout" });
+        expect(apiRequestWorkflowRunCancelMock).toHaveBeenCalledOnce();
+
+        // Logging
+        assertOnlyCalled(coreDebugLogMock, coreWarningLogMock);
+        expect(coreWarningLogMock).toHaveBeenCalledOnce();
+      });
+
       it("does not request cancellation if the run concludes first", async () => {
         apiFetchWorkflowRunStateMock.mockResolvedValue({
           status: WorkflowRunStatus.Completed,
