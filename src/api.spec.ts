@@ -18,6 +18,7 @@ import {
   init,
   retryOnError,
 } from "./api.ts";
+import * as constants from "./constants.ts";
 import { clearEtags } from "./etags.ts";
 import { mockLoggingFunctions } from "./test-utils/logging.mock.ts";
 
@@ -555,8 +556,9 @@ describe("API", () => {
 
           // Behaviour
           const urlPromise = fetchWorkflowRunActiveJobUrlRetry(123456, 100);
-          vi.advanceTimersByTime(400);
-          await vi.advanceTimersByTimeAsync(400);
+          await vi.advanceTimersByTimeAsync(
+            constants.WORKFLOW_RUN_ACTIVE_JOB_POLL_INTERVAL_MS,
+          );
 
           const result = await urlPromise;
 
@@ -619,8 +621,9 @@ describe("API", () => {
 
           // Behaviour
           const urlPromise = fetchWorkflowRunActiveJobUrlRetry(123456, 200);
-          vi.advanceTimersByTime(400);
-          await vi.advanceTimersByTimeAsync(400);
+          await vi.advanceTimersByTimeAsync(
+            constants.WORKFLOW_RUN_ACTIVE_JOB_POLL_INTERVAL_MS,
+          );
 
           const result = await urlPromise;
 
