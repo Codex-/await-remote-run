@@ -20125,10 +20125,17 @@ function getConfig() {
   const cancelTimeoutSeconds = getNumberFromValue(
     getInput("cancel_timeout_seconds")
   );
-  if (cancelTimeoutSeconds !== void 0 && cancelTimeoutSeconds >= runTimeoutSeconds) {
-    throw new TypeError(
-      `cancel_timeout_seconds (${cancelTimeoutSeconds}) must be less than run_timeout_seconds (${runTimeoutSeconds}).`
-    );
+  if (cancelTimeoutSeconds !== void 0) {
+    if (cancelTimeoutSeconds <= 0) {
+      throw new TypeError(
+        `cancel_timeout_seconds (${cancelTimeoutSeconds}) must be a positive number.`
+      );
+    }
+    if (cancelTimeoutSeconds >= runTimeoutSeconds) {
+      throw new TypeError(
+        `cancel_timeout_seconds (${cancelTimeoutSeconds}) must be less than run_timeout_seconds (${runTimeoutSeconds}).`
+      );
+    }
   }
   return {
     token: getInput("token", { required: true }),
@@ -23993,7 +24000,7 @@ async function fetchWorkflowRunState(runId) {
   }
 }
 function isHttpError(error2) {
-  return error2 instanceof Error && error2.name === "HttpError";
+  return error2 instanceof Error && error2.name === "HttpError" && "status" in error2 && typeof error2.status === "number";
 }
 function isRetryable(error2) {
   if (error2.status >= 500 || error2.status === 429) {
