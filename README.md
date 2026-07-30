@@ -6,15 +6,38 @@ Await the completion of a foreign repository Workflow Run given the Run ID.
 
 This Action exists as a workaround for the issue where you cannot await the completion of a dispatched action.
 
-This action requires being able to get the run ID from a dispatched action, this can be achieved through another Action i've created, [return-dispatch](https://github.com/Codex-/return-dispatch).
+This action requires being able to get the run ID from a dispatched action, see [Getting the Run ID](#getting-the-run-id).
 
 Should a remote workflow run fail, this action will attempt to output which step failed, with a link to the workflow run itself.
 
-An example using both of these actions is documented below.
+## Getting the Run ID
+
+Dispatching a run and identifying the run it created are separate problems. Either of these solves the latter:
+
+| Source                                                         | Yields                                                    |
+| -------------------------------------------------------------- | --------------------------------------------------------- |
+| `gh workflow run`                                              | The run URL on stdout, the ID being its last path segment |
+| [`return-dispatch`](https://github.com/Codex-/return-dispatch) | `run_id` and `run_url` step outputs                       |
+
+Taking the ID from the `gh` CLI (>=2.87.0) looks like this:
+
+```yaml
+- name: Dispatch an action and get the run ID
+  id: dispatch
+  env:
+    GH_TOKEN: ${{ secrets.TOKEN }}
+  run: |
+    run_url=$(gh workflow run automation-test.yml --repo repository-owner/repository-name --ref target_branch)
+    if [ -z "$run_url" ]; then
+      echo "Dispatch returned no run details"
+      exit 1
+    fi
+    echo "run_id=${run_url##*/}" >> "$GITHUB_OUTPUT"
+```
 
 ## Usage
 
-Once you have configured your remote repository to work as expected with the `return-dispatch` action (**including accepting and echoing back the distinct_id input in your target workflow**), include `await-remote-run` as described below.
+With the run ID in hand, include `await-remote-run` as described below.
 
 ```yaml
 steps:
@@ -22,7 +45,8 @@ steps:
     uses: codex-/return-dispatch@v4
     id: return_dispatch
     with:
-      token: ${{ github.token }}
+      token: ${{ secrets.TOKEN }} # Note this is NOT GITHUB_TOKEN but a PAT
+      ref: target_branch # or refs/heads/target_branch
       repo: repository-name
       owner: repository-owner
       workflow: automation-test.yml
@@ -30,9 +54,8 @@ steps:
     uses: Codex-/await-remote-run@v2
     with:
       token: ${{ github.token }}
-      ref: target_branch # or refs/heads/target_branch
-      repo: return-dispatch
-      owner: codex-
+      repo: repository-name
+      owner: repository-owner
       run_id: ${{ steps.return_dispatch.outputs.run_id }}
       run_timeout_seconds: 300 # Optional
       cancel_timeout_seconds: 240 # Optional
@@ -43,18 +66,34 @@ steps:
 
 Giving up on a remote run leaves it running, which is a problem if your workflow tears down something that run depends on, such as a test environment.
 
-Set `cancel_timeout_seconds` to request cancellation once that much time has elapsed. It must be less than `run_timeout_seconds`, the difference being how long this action keeps polling to observe the resulting `cancelled` conclusion. Cancellation requires `actions:write` and is asynchronous, so the remote run may take some time to wind down.
+Set `cancel_timeout_seconds` to request cancellation once that much time has elapsed. It must be less than `run_timeout_seconds`, the difference being how long this action keeps polling to observe the resulting `cancelled` conclusion. Cancellation is asynchronous, so the remote run may take some time to wind down.
+
+```yaml
+- name: Await Run ID ${{ steps.return_dispatch.outputs.run_id }}
+  uses: Codex-/await-remote-run@v2
+  with:
+    token: ${{ secrets.TOKEN }} # Cancelling is a write, so this cannot be GITHUB_TOKEN
+    repo: repository-name
+    owner: repository-owner
+    run_id: ${{ steps.return_dispatch.outputs.run_id }}
+    run_timeout_seconds: 300
+    cancel_timeout_seconds: 240
+```
+
+## Token
+
+Awaiting a run only reads it, so `GITHUB_TOKEN` is enough for a public remote repository. A private one needs a Personal Access Token (PAT), as `GITHUB_TOKEN` can only access the repository containing the workflow.
+
+Cancelling a run is a write, and `GITHUB_TOKEN` cannot be granted `Actions` write on another repository, so `cancel_timeout_seconds` always needs a PAT.
 
 ### Permissions Required
 
-The permissions required for this action to function correctly are:
+One of the following, depending on the token type:
 
-- `repo` scope
-  - You may get away with simply having `repo:public_repo`
-  - `repo` is definitely needed if the repository is private.
-- `actions:read`
-- `actions:write`
-  - Only required when using `cancel_timeout_seconds`
+- Fine-grained PAT, GitHub App, or `GITHUB_TOKEN`: `Actions` repository permission, **read**
+  - **write** is additionally required when using `cancel_timeout_seconds`
+- Classic PAT or OAuth token: `repo` scope
+  - `repo:public_repo` may be enough for a public repository
 
 ### APIs Used
 
@@ -62,19 +101,13 @@ For the sake of transparency please note that this action uses the following API
 
 - [Get a workflow run](https://docs.github.com/en/rest/actions/workflow-runs#get-a-workflow-run)
   - GET `/repos/{owner}/{repo}/actions/runs/{run_id}`
-  - Permissions:
-    - `repo`
-    - `actions:read`
+  - `Actions`: read
 - [List jobs for a workflow run](https://docs.github.com/en/rest/actions/workflow-jobs#list-jobs-for-a-workflow-run)
   - GET `/repos/{owner}/{repo}/actions/runs/{run_id}/jobs`
-  - Permissions:
-    - `repo`
-    - `actions:read`
+  - `Actions`: read
 - [Cancel a workflow run](https://docs.github.com/en/rest/actions/workflow-runs#cancel-a-workflow-run), only if using `cancel_timeout_seconds`
   - POST `/repos/{owner}/{repo}/actions/runs/{run_id}/cancel`
-  - Permissions:
-    - `repo`
-    - `actions:write`
+  - `Actions`: write
 
 For more information please see [api.ts](./src/api.ts).
 
