@@ -9,8 +9,8 @@ import {
 import {
   WorkflowRunConclusion,
   WorkflowRunStatus,
-  type Result,
   type WorkflowRunConclusionResult,
+  type WorkflowRunResult,
   type WorkflowRunStatusResult,
 } from "./types.ts";
 import { sleep } from "./utils.ts";
@@ -111,6 +111,48 @@ export async function handleActionFail(
   }
 }
 
+/**
+ * The result a fetched state resolves to, or undefined while the run has yet to
+ * resolve and is worth polling for again.
+ */
+function getWorkflowRunStateResult(
+  status: WorkflowRunStatus | null,
+  conclusion: WorkflowRunConclusion | null,
+  attemptNo: number,
+): WorkflowRunResult | undefined {
+  const statusResult = getWorkflowRunStatusResult(status, attemptNo);
+  if (!statusResult.success) {
+    // An unsupported status may never resolve, unlike a pending one. Alert to
+    // raise this so we can handle it properly.
+    return statusResult.reason === "unsupported" ? statusResult : undefined;
+  }
+
+  // We only get a conclusion should the status resolve, otherwise it is null.
+  const conclusionResult = getWorkflowRunConclusionResult(conclusion);
+  if (conclusionResult.success || conclusionResult.reason === "inconclusive") {
+    return {
+      success: true,
+      value: {
+        status: statusResult.value,
+        conclusion: conclusionResult.value,
+      },
+    };
+  }
+
+  if (conclusionResult.reason === "timed_out") {
+    return {
+      success: false,
+      reason: "timeout",
+    };
+  }
+
+  return {
+    success: false,
+    reason: "unsupported",
+    value: conclusionResult.value,
+  };
+}
+
 interface RunOpts {
   startTime: number;
   pollIntervalMs: number;
@@ -124,12 +166,7 @@ export async function getWorkflowRunResult({
   runTimeoutMs,
   pollIntervalMs,
   cancelTimeoutMs,
-}: RunOpts): Promise<
-  Result<
-    | { status: WorkflowRunStatus.Completed; conclusion: WorkflowRunConclusion }
-    | { status: WorkflowRunStatus; conclusion?: WorkflowRunConclusion }
-  >
-> {
+}: RunOpts): Promise<WorkflowRunResult> {
   let attemptNo = 0;
   let cancelRequested = false;
   while (Date.now() - startTime < runTimeoutMs) {
@@ -142,41 +179,13 @@ export async function getWorkflowRunResult({
     );
     if (fetchWorkflowRunStateResult.success) {
       const { status, conclusion } = fetchWorkflowRunStateResult.value;
-      const statusResult = getWorkflowRunStatusResult(status, attemptNo);
-      if (statusResult.success) {
-        // We only get a conclusion should the status resolve, otherwise it is null.
-        const conclusionResult = getWorkflowRunConclusionResult(conclusion);
-        if (
-          conclusionResult.success ||
-          conclusionResult.reason === "inconclusive"
-        ) {
-          return {
-            success: true,
-            value: {
-              status: statusResult.value,
-              conclusion: conclusionResult.value,
-            },
-          };
-        }
-
-        if (conclusionResult.reason === "timed_out") {
-          return {
-            success: false,
-            reason: "timeout",
-          };
-        }
-
-        return {
-          success: false,
-          reason: "unsupported",
-          value: conclusionResult.value,
-        };
-      }
-
-      // If the status is unsupported, we can't guarantee it will ever
-      // resolve. Alert to raise this so we can handle it properly.
-      if (statusResult.reason === "unsupported") {
-        return statusResult;
+      const stateResult = getWorkflowRunStateResult(
+        status,
+        conclusion,
+        attemptNo,
+      );
+      if (stateResult !== undefined) {
+        return stateResult;
       }
     } else {
       core.debug(`Failed to fetch run state, attempt ${attemptNo}...`);
