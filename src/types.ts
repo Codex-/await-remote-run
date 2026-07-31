@@ -43,13 +43,15 @@ interface ResultUnsupported {
   value: string;
 }
 
-export type WorkflowRunResult = Result<
-  | { status: WorkflowRunStatus.Completed; conclusion: WorkflowRunConclusion }
-  | { status: WorkflowRunStatus; conclusion?: WorkflowRunConclusion }
->;
+export type WorkflowRunResult = Result<{
+  status: WorkflowRunStatus.Completed;
+  conclusion: WorkflowRunConclusion;
+}>;
 
 export type WorkflowRunStatusResult =
-  ResultSuccess<WorkflowRunStatus> | ResultStatusPending | ResultUnsupported;
+  | ResultSuccess<WorkflowRunStatus.Completed>
+  | ResultStatusPending
+  | ResultUnsupported;
 
 interface ResultStatusPending {
   success: false;
