@@ -1677,7 +1677,7 @@ var require_request = __commonJS({
     var { headerNameLowerCasedRecord } = require_constants();
     var invalidPathRegex = /[^\u0021-\u00ff]/;
     var kHandler = /* @__PURE__ */ Symbol("handler");
-    var Request = class {
+    var Request2 = class {
       constructor(origin, {
         path,
         method,
@@ -1979,7 +1979,7 @@ var require_request = __commonJS({
         request2.headers.push(key, val);
       }
     }
-    module.exports = Request;
+    module.exports = Request2;
   }
 });
 
@@ -7508,7 +7508,7 @@ var require_client = __commonJS({
     var http = __require("node:http");
     var util = require_util();
     var { channels } = require_diagnostics();
-    var Request = require_request();
+    var Request2 = require_request();
     var DispatcherBase = require_dispatcher_base();
     var {
       InvalidArgumentError,
@@ -7750,7 +7750,7 @@ var require_client = __commonJS({
       }
       [kDispatch](opts, handler2) {
         const origin = opts.origin || this[kUrl].origin;
-        const request2 = new Request(origin, opts, handler2);
+        const request2 = new Request2(origin, opts, handler2);
         this[kQueue].push(request2);
         if (this[kResuming]) {
         } else if (util.bodyLength(request2.body) == null && util.isIterable(request2.body)) {
@@ -11992,7 +11992,7 @@ var require_headers = __commonJS({
         }
       }
     };
-    var Headers2 = class _Headers {
+    var Headers3 = class _Headers {
       #guard;
       #headersList;
       constructor(init2 = void 0) {
@@ -12142,13 +12142,13 @@ var require_headers = __commonJS({
         o.#headersList = list;
       }
     };
-    var { getHeadersGuard, setHeadersGuard, getHeadersList, setHeadersList } = Headers2;
-    Reflect.deleteProperty(Headers2, "getHeadersGuard");
-    Reflect.deleteProperty(Headers2, "setHeadersGuard");
-    Reflect.deleteProperty(Headers2, "getHeadersList");
-    Reflect.deleteProperty(Headers2, "setHeadersList");
-    iteratorMixin("Headers", Headers2, kHeadersSortedMap, 0, 1);
-    Object.defineProperties(Headers2.prototype, {
+    var { getHeadersGuard, setHeadersGuard, getHeadersList, setHeadersList } = Headers3;
+    Reflect.deleteProperty(Headers3, "getHeadersGuard");
+    Reflect.deleteProperty(Headers3, "setHeadersGuard");
+    Reflect.deleteProperty(Headers3, "getHeadersList");
+    Reflect.deleteProperty(Headers3, "setHeadersList");
+    iteratorMixin("Headers", Headers3, kHeadersSortedMap, 0, 1);
+    Object.defineProperties(Headers3.prototype, {
       append: kEnumerableProperty,
       delete: kEnumerableProperty,
       get: kEnumerableProperty,
@@ -12166,7 +12166,7 @@ var require_headers = __commonJS({
     webidl.converters.HeadersInit = function(V, prefix, argument) {
       if (webidl.util.Type(V) === "Object") {
         const iterator2 = Reflect.get(V, Symbol.iterator);
-        if (!util.types.isProxy(V) && iterator2 === Headers2.prototype.entries) {
+        if (!util.types.isProxy(V) && iterator2 === Headers3.prototype.entries) {
           try {
             return getHeadersList(V).entriesList;
           } catch {
@@ -12187,7 +12187,7 @@ var require_headers = __commonJS({
       fill,
       // for test.
       compareHeaderName,
-      Headers: Headers2,
+      Headers: Headers3,
       HeadersList,
       getHeadersGuard,
       setHeadersGuard,
@@ -12201,7 +12201,7 @@ var require_headers = __commonJS({
 var require_response = __commonJS({
   "node_modules/.pnpm/undici@6.27.0/node_modules/undici/lib/web/fetch/response.js"(exports, module) {
     "use strict";
-    var { Headers: Headers2, HeadersList, fill, getHeadersGuard, setHeadersGuard, setHeadersList } = require_headers();
+    var { Headers: Headers3, HeadersList, fill, getHeadersGuard, setHeadersGuard, setHeadersList } = require_headers();
     var { extractBody, cloneBody, mixinBody, hasFinalizationRegistry, streamRegistry, bodyUnusable } = require_body();
     var util = require_util();
     var nodeUtil = __require("node:util");
@@ -12228,7 +12228,7 @@ var require_response = __commonJS({
     var assert = __require("node:assert");
     var { types } = __require("node:util");
     var textEncoder = new TextEncoder("utf-8");
-    var Response = class _Response {
+    var Response2 = class _Response {
       // Creates network error Response.
       static error() {
         const responseObject = fromInnerResponse(makeNetworkError(), "immutable");
@@ -12279,7 +12279,7 @@ var require_response = __commonJS({
         }
         init2 = webidl.converters.ResponseInit(init2);
         this[kState] = makeResponse({});
-        this[kHeaders] = new Headers2(kConstruct);
+        this[kHeaders] = new Headers3(kConstruct);
         setHeadersGuard(this[kHeaders], "response");
         setHeadersList(this[kHeaders], this[kState].headersList);
         let bodyWithType = null;
@@ -12371,8 +12371,8 @@ var require_response = __commonJS({
         return `Response ${nodeUtil.formatWithOptions(options, properties)}`;
       }
     };
-    mixinBody(Response);
-    Object.defineProperties(Response.prototype, {
+    mixinBody(Response2);
+    Object.defineProperties(Response2.prototype, {
       type: kEnumerableProperty,
       url: kEnumerableProperty,
       status: kEnumerableProperty,
@@ -12388,7 +12388,7 @@ var require_response = __commonJS({
         configurable: true
       }
     });
-    Object.defineProperties(Response, {
+    Object.defineProperties(Response2, {
       json: kEnumerableProperty,
       redirect: kEnumerableProperty,
       error: kEnumerableProperty
@@ -12521,9 +12521,9 @@ var require_response = __commonJS({
       }
     }
     function fromInnerResponse(innerResponse, guard) {
-      const response = new Response(kConstruct);
+      const response = new Response2(kConstruct);
       response[kState] = innerResponse;
-      response[kHeaders] = new Headers2(kConstruct);
+      response[kHeaders] = new Headers3(kConstruct);
       setHeadersList(response[kHeaders], innerResponse.headersList);
       setHeadersGuard(response[kHeaders], guard);
       if (hasFinalizationRegistry && innerResponse.body?.stream) {
@@ -12589,7 +12589,7 @@ var require_response = __commonJS({
       makeResponse,
       makeAppropriateNetworkError,
       filterResponse,
-      Response,
+      Response: Response2,
       cloneResponse,
       fromInnerResponse
     };
@@ -12643,7 +12643,7 @@ var require_request2 = __commonJS({
   "node_modules/.pnpm/undici@6.27.0/node_modules/undici/lib/web/fetch/request.js"(exports, module) {
     "use strict";
     var { extractBody, mixinBody, cloneBody, bodyUnusable } = require_body();
-    var { Headers: Headers2, fill: fillHeaders, HeadersList, setHeadersGuard, getHeadersGuard, setHeadersList, getHeadersList } = require_headers();
+    var { Headers: Headers3, fill: fillHeaders, HeadersList, setHeadersGuard, getHeadersGuard, setHeadersList, getHeadersList } = require_headers();
     var { FinalizationRegistry: FinalizationRegistry2 } = require_dispatcher_weakref()();
     var util = require_util();
     var nodeUtil = __require("node:util");
@@ -12699,7 +12699,7 @@ var require_request2 = __commonJS({
       }
     }
     var patchMethodWarning = false;
-    var Request = class _Request {
+    var Request2 = class _Request {
       // https://fetch.spec.whatwg.org/#dom-request
       constructor(input, init2 = {}) {
         webidl.util.markAsUncloneable(this);
@@ -12911,7 +12911,7 @@ var require_request2 = __commonJS({
             requestFinalizer.register(ac, { signal, abort }, abort);
           }
         }
-        this[kHeaders] = new Headers2(kConstruct);
+        this[kHeaders] = new Headers3(kConstruct);
         setHeadersList(this[kHeaders], request2.headersList);
         setHeadersGuard(this[kHeaders], "request");
         if (mode === "no-cors") {
@@ -13146,7 +13146,7 @@ var require_request2 = __commonJS({
         return `Request ${nodeUtil.formatWithOptions(options, properties)}`;
       }
     };
-    mixinBody(Request);
+    mixinBody(Request2);
     function makeRequest(init2) {
       return {
         method: init2.method ?? "GET",
@@ -13197,15 +13197,15 @@ var require_request2 = __commonJS({
       return newRequest;
     }
     function fromInnerRequest(innerRequest, signal, guard) {
-      const request2 = new Request(kConstruct);
+      const request2 = new Request2(kConstruct);
       request2[kState] = innerRequest;
       request2[kSignal] = signal;
-      request2[kHeaders] = new Headers2(kConstruct);
+      request2[kHeaders] = new Headers3(kConstruct);
       setHeadersList(request2[kHeaders], innerRequest.headersList);
       setHeadersGuard(request2[kHeaders], guard);
       return request2;
     }
-    Object.defineProperties(Request.prototype, {
+    Object.defineProperties(Request2.prototype, {
       method: kEnumerableProperty,
       url: kEnumerableProperty,
       headers: kEnumerableProperty,
@@ -13232,13 +13232,13 @@ var require_request2 = __commonJS({
       }
     });
     webidl.converters.Request = webidl.interfaceConverter(
-      Request
+      Request2
     );
     webidl.converters.RequestInfo = function(V, prefix, argument) {
       if (typeof V === "string") {
         return webidl.converters.USVString(V, prefix, argument);
       }
-      if (V instanceof Request) {
+      if (V instanceof Request2) {
         return webidl.converters.Request(V, prefix, argument);
       }
       return webidl.converters.USVString(V, prefix, argument);
@@ -13329,7 +13329,7 @@ var require_request2 = __commonJS({
         converter: webidl.converters.any
       }
     ]);
-    module.exports = { Request, makeRequest, fromInnerRequest, cloneRequest };
+    module.exports = { Request: Request2, makeRequest, fromInnerRequest, cloneRequest };
   }
 });
 
@@ -13345,7 +13345,7 @@ var require_fetch = __commonJS({
       fromInnerResponse
     } = require_response();
     var { HeadersList } = require_headers();
-    var { Request, cloneRequest } = require_request2();
+    var { Request: Request2, cloneRequest } = require_request2();
     var zlib = __require("node:zlib");
     var {
       bytesMatch,
@@ -13440,7 +13440,7 @@ var require_fetch = __commonJS({
       let p = createDeferredPromise();
       let requestObject;
       try {
-        requestObject = new Request(input, init2);
+        requestObject = new Request2(input, init2);
       } catch (e) {
         p.reject(e);
         return p.promise;
@@ -15261,8 +15261,8 @@ var require_cache = __commonJS({
     var { urlEquals, getFieldValues } = require_util5();
     var { kEnumerableProperty, isDisturbed } = require_util();
     var { webidl } = require_webidl();
-    var { Response, cloneResponse, fromInnerResponse } = require_response();
-    var { Request, fromInnerRequest } = require_request2();
+    var { Response: Response2, cloneResponse, fromInnerResponse } = require_response();
+    var { Request: Request2, fromInnerRequest } = require_request2();
     var { kState } = require_symbols2();
     var { fetching } = require_fetch();
     var { urlIsHttpHttpsScheme, createDeferredPromise, readAllBytes } = require_util2();
@@ -15336,7 +15336,7 @@ var require_cache = __commonJS({
         }
         const fetchControllers = [];
         for (const request2 of requests) {
-          const r = new Request(request2)[kState];
+          const r = new Request2(request2)[kState];
           if (!urlIsHttpHttpsScheme(r.url)) {
             throw webidl.errors.exception({
               header: prefix,
@@ -15420,10 +15420,10 @@ var require_cache = __commonJS({
         request2 = webidl.converters.RequestInfo(request2, prefix, "request");
         response = webidl.converters.Response(response, prefix, "response");
         let innerRequest = null;
-        if (request2 instanceof Request) {
+        if (request2 instanceof Request2) {
           innerRequest = request2[kState];
         } else {
-          innerRequest = new Request(request2)[kState];
+          innerRequest = new Request2(request2)[kState];
         }
         if (!urlIsHttpHttpsScheme(innerRequest.url) || innerRequest.method !== "GET") {
           throw webidl.errors.exception({
@@ -15501,14 +15501,14 @@ var require_cache = __commonJS({
         request2 = webidl.converters.RequestInfo(request2, prefix, "request");
         options = webidl.converters.CacheQueryOptions(options, prefix, "options");
         let r = null;
-        if (request2 instanceof Request) {
+        if (request2 instanceof Request2) {
           r = request2[kState];
           if (r.method !== "GET" && !options.ignoreMethod) {
             return false;
           }
         } else {
           assert(typeof request2 === "string");
-          r = new Request(request2)[kState];
+          r = new Request2(request2)[kState];
         }
         const operations = [];
         const operation = {
@@ -15547,13 +15547,13 @@ var require_cache = __commonJS({
         options = webidl.converters.CacheQueryOptions(options, prefix, "options");
         let r = null;
         if (request2 !== void 0) {
-          if (request2 instanceof Request) {
+          if (request2 instanceof Request2) {
             r = request2[kState];
             if (r.method !== "GET" && !options.ignoreMethod) {
               return [];
             }
           } else if (typeof request2 === "string") {
-            r = new Request(request2)[kState];
+            r = new Request2(request2)[kState];
           }
         }
         const promise = createDeferredPromise();
@@ -15719,13 +15719,13 @@ var require_cache = __commonJS({
       #internalMatchAll(request2, options, maxResponses = Infinity) {
         let r = null;
         if (request2 !== void 0) {
-          if (request2 instanceof Request) {
+          if (request2 instanceof Request2) {
             r = request2[kState];
             if (r.method !== "GET" && !options.ignoreMethod) {
               return [];
             }
           } else if (typeof request2 === "string") {
-            r = new Request(request2)[kState];
+            r = new Request2(request2)[kState];
           }
         }
         const responses = [];
@@ -15788,7 +15788,7 @@ var require_cache = __commonJS({
         converter: webidl.converters.DOMString
       }
     ]);
-    webidl.converters.Response = webidl.interfaceConverter(Response);
+    webidl.converters.Response = webidl.interfaceConverter(Response2);
     webidl.converters["sequence<RequestInfo>"] = webidl.sequenceConverter(
       webidl.converters.RequestInfo
     );
@@ -16234,10 +16234,10 @@ var require_cookies = __commonJS({
     var { parseSetCookie } = require_parse();
     var { stringify } = require_util6();
     var { webidl } = require_webidl();
-    var { Headers: Headers2 } = require_headers();
+    var { Headers: Headers3 } = require_headers();
     function getCookies(headers) {
       webidl.argumentLengthCheck(arguments, 1, "getCookies");
-      webidl.brandCheck(headers, Headers2, { strict: false });
+      webidl.brandCheck(headers, Headers3, { strict: false });
       const cookie = headers.get("cookie");
       const out = {};
       if (!cookie) {
@@ -16250,7 +16250,7 @@ var require_cookies = __commonJS({
       return out;
     }
     function deleteCookie(headers, name, attributes) {
-      webidl.brandCheck(headers, Headers2, { strict: false });
+      webidl.brandCheck(headers, Headers3, { strict: false });
       const prefix = "deleteCookie";
       webidl.argumentLengthCheck(arguments, 2, prefix);
       name = webidl.converters.DOMString(name, prefix, "name");
@@ -16264,7 +16264,7 @@ var require_cookies = __commonJS({
     }
     function getSetCookies(headers) {
       webidl.argumentLengthCheck(arguments, 1, "getSetCookies");
-      webidl.brandCheck(headers, Headers2, { strict: false });
+      webidl.brandCheck(headers, Headers3, { strict: false });
       const cookies = headers.getSetCookie();
       if (!cookies) {
         return [];
@@ -16273,7 +16273,7 @@ var require_cookies = __commonJS({
     }
     function setCookie(headers, cookie) {
       webidl.argumentLengthCheck(arguments, 2, "setCookie");
-      webidl.brandCheck(headers, Headers2, { strict: false });
+      webidl.brandCheck(headers, Headers3, { strict: false });
       cookie = webidl.converters.Cookie(cookie);
       const str = stringify(cookie);
       if (str) {
@@ -16963,7 +16963,7 @@ var require_connection = __commonJS({
     var { CloseEvent } = require_events();
     var { makeRequest } = require_request2();
     var { fetching } = require_fetch();
-    var { Headers: Headers2, getHeadersList } = require_headers();
+    var { Headers: Headers3, getHeadersList } = require_headers();
     var { getDecodeSplit } = require_util2();
     var { WebsocketFrameSend } = require_frame();
     var crypto;
@@ -16985,7 +16985,7 @@ var require_connection = __commonJS({
         redirect: "error"
       });
       if (options.headers) {
-        const headersList = getHeadersList(new Headers2(options.headers));
+        const headersList = getHeadersList(new Headers3(options.headers));
         request2.headersList = headersList;
       }
       const keyValue = crypto.randomBytes(16).toString("base64");
@@ -18940,11 +18940,11 @@ var require_lib = __commonJS({
       HttpCodes3[HttpCodes3["ServiceUnavailable"] = 503] = "ServiceUnavailable";
       HttpCodes3[HttpCodes3["GatewayTimeout"] = 504] = "GatewayTimeout";
     })(HttpCodes2 || (exports.HttpCodes = HttpCodes2 = {}));
-    var Headers2;
-    (function(Headers3) {
-      Headers3["Accept"] = "accept";
-      Headers3["ContentType"] = "content-type";
-    })(Headers2 || (exports.Headers = Headers2 = {}));
+    var Headers3;
+    (function(Headers4) {
+      Headers4["Accept"] = "accept";
+      Headers4["ContentType"] = "content-type";
+    })(Headers3 || (exports.Headers = Headers3 = {}));
     var MediaTypes2;
     (function(MediaTypes3) {
       MediaTypes3["ApplicationJson"] = "application/json";
@@ -19009,8 +19009,8 @@ var require_lib = __commonJS({
       }
     };
     exports.HttpClientResponse = HttpClientResponse;
-    function isHttps(requestUrl) {
-      const parsedUrl = new URL(requestUrl);
+    function isHttps(requestUrl2) {
+      const parsedUrl = new URL(requestUrl2);
       return parsedUrl.protocol === "https:";
     }
     var HttpClient3 = class {
@@ -19051,44 +19051,44 @@ var require_lib = __commonJS({
           }
         }
       }
-      options(requestUrl, additionalHeaders) {
+      options(requestUrl2, additionalHeaders) {
         return __awaiter3(this, void 0, void 0, function* () {
-          return this.request("OPTIONS", requestUrl, null, additionalHeaders || {});
+          return this.request("OPTIONS", requestUrl2, null, additionalHeaders || {});
         });
       }
-      get(requestUrl, additionalHeaders) {
+      get(requestUrl2, additionalHeaders) {
         return __awaiter3(this, void 0, void 0, function* () {
-          return this.request("GET", requestUrl, null, additionalHeaders || {});
+          return this.request("GET", requestUrl2, null, additionalHeaders || {});
         });
       }
-      del(requestUrl, additionalHeaders) {
+      del(requestUrl2, additionalHeaders) {
         return __awaiter3(this, void 0, void 0, function* () {
-          return this.request("DELETE", requestUrl, null, additionalHeaders || {});
+          return this.request("DELETE", requestUrl2, null, additionalHeaders || {});
         });
       }
-      post(requestUrl, data, additionalHeaders) {
+      post(requestUrl2, data, additionalHeaders) {
         return __awaiter3(this, void 0, void 0, function* () {
-          return this.request("POST", requestUrl, data, additionalHeaders || {});
+          return this.request("POST", requestUrl2, data, additionalHeaders || {});
         });
       }
-      patch(requestUrl, data, additionalHeaders) {
+      patch(requestUrl2, data, additionalHeaders) {
         return __awaiter3(this, void 0, void 0, function* () {
-          return this.request("PATCH", requestUrl, data, additionalHeaders || {});
+          return this.request("PATCH", requestUrl2, data, additionalHeaders || {});
         });
       }
-      put(requestUrl, data, additionalHeaders) {
+      put(requestUrl2, data, additionalHeaders) {
         return __awaiter3(this, void 0, void 0, function* () {
-          return this.request("PUT", requestUrl, data, additionalHeaders || {});
+          return this.request("PUT", requestUrl2, data, additionalHeaders || {});
         });
       }
-      head(requestUrl, additionalHeaders) {
+      head(requestUrl2, additionalHeaders) {
         return __awaiter3(this, void 0, void 0, function* () {
-          return this.request("HEAD", requestUrl, null, additionalHeaders || {});
+          return this.request("HEAD", requestUrl2, null, additionalHeaders || {});
         });
       }
-      sendStream(verb, requestUrl, stream, additionalHeaders) {
+      sendStream(verb, requestUrl2, stream, additionalHeaders) {
         return __awaiter3(this, void 0, void 0, function* () {
-          return this.request(verb, requestUrl, stream, additionalHeaders);
+          return this.request(verb, requestUrl2, stream, additionalHeaders);
         });
       }
       /**
@@ -19096,36 +19096,36 @@ var require_lib = __commonJS({
        * Be aware that not found returns a null.  Other errors (4xx, 5xx) reject the promise
        */
       getJson(requestUrl_1) {
-        return __awaiter3(this, arguments, void 0, function* (requestUrl, additionalHeaders = {}) {
-          additionalHeaders[Headers2.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, Headers2.Accept, MediaTypes2.ApplicationJson);
-          const res = yield this.get(requestUrl, additionalHeaders);
+        return __awaiter3(this, arguments, void 0, function* (requestUrl2, additionalHeaders = {}) {
+          additionalHeaders[Headers3.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, Headers3.Accept, MediaTypes2.ApplicationJson);
+          const res = yield this.get(requestUrl2, additionalHeaders);
           return this._processResponse(res, this.requestOptions);
         });
       }
       postJson(requestUrl_1, obj_1) {
-        return __awaiter3(this, arguments, void 0, function* (requestUrl, obj, additionalHeaders = {}) {
+        return __awaiter3(this, arguments, void 0, function* (requestUrl2, obj, additionalHeaders = {}) {
           const data = JSON.stringify(obj, null, 2);
-          additionalHeaders[Headers2.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, Headers2.Accept, MediaTypes2.ApplicationJson);
-          additionalHeaders[Headers2.ContentType] = this._getExistingOrDefaultContentTypeHeader(additionalHeaders, MediaTypes2.ApplicationJson);
-          const res = yield this.post(requestUrl, data, additionalHeaders);
+          additionalHeaders[Headers3.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, Headers3.Accept, MediaTypes2.ApplicationJson);
+          additionalHeaders[Headers3.ContentType] = this._getExistingOrDefaultContentTypeHeader(additionalHeaders, MediaTypes2.ApplicationJson);
+          const res = yield this.post(requestUrl2, data, additionalHeaders);
           return this._processResponse(res, this.requestOptions);
         });
       }
       putJson(requestUrl_1, obj_1) {
-        return __awaiter3(this, arguments, void 0, function* (requestUrl, obj, additionalHeaders = {}) {
+        return __awaiter3(this, arguments, void 0, function* (requestUrl2, obj, additionalHeaders = {}) {
           const data = JSON.stringify(obj, null, 2);
-          additionalHeaders[Headers2.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, Headers2.Accept, MediaTypes2.ApplicationJson);
-          additionalHeaders[Headers2.ContentType] = this._getExistingOrDefaultContentTypeHeader(additionalHeaders, MediaTypes2.ApplicationJson);
-          const res = yield this.put(requestUrl, data, additionalHeaders);
+          additionalHeaders[Headers3.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, Headers3.Accept, MediaTypes2.ApplicationJson);
+          additionalHeaders[Headers3.ContentType] = this._getExistingOrDefaultContentTypeHeader(additionalHeaders, MediaTypes2.ApplicationJson);
+          const res = yield this.put(requestUrl2, data, additionalHeaders);
           return this._processResponse(res, this.requestOptions);
         });
       }
       patchJson(requestUrl_1, obj_1) {
-        return __awaiter3(this, arguments, void 0, function* (requestUrl, obj, additionalHeaders = {}) {
+        return __awaiter3(this, arguments, void 0, function* (requestUrl2, obj, additionalHeaders = {}) {
           const data = JSON.stringify(obj, null, 2);
-          additionalHeaders[Headers2.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, Headers2.Accept, MediaTypes2.ApplicationJson);
-          additionalHeaders[Headers2.ContentType] = this._getExistingOrDefaultContentTypeHeader(additionalHeaders, MediaTypes2.ApplicationJson);
-          const res = yield this.patch(requestUrl, data, additionalHeaders);
+          additionalHeaders[Headers3.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, Headers3.Accept, MediaTypes2.ApplicationJson);
+          additionalHeaders[Headers3.ContentType] = this._getExistingOrDefaultContentTypeHeader(additionalHeaders, MediaTypes2.ApplicationJson);
+          const res = yield this.patch(requestUrl2, data, additionalHeaders);
           return this._processResponse(res, this.requestOptions);
         });
       }
@@ -19134,12 +19134,12 @@ var require_lib = __commonJS({
        * All other methods such as get, post, patch, and request ultimately call this.
        * Prefer get, del, post and patch
        */
-      request(verb, requestUrl, data, headers) {
+      request(verb, requestUrl2, data, headers) {
         return __awaiter3(this, void 0, void 0, function* () {
           if (this._disposed) {
             throw new Error("Client has already been disposed.");
           }
-          const parsedUrl = new URL(requestUrl);
+          const parsedUrl = new URL(requestUrl2);
           let info2 = this._prepareRequest(verb, parsedUrl, headers);
           const maxTries = this._allowRetries && RetryableHttpVerbs.includes(verb) ? this._maxRetries + 1 : 1;
           let numTries = 0;
@@ -19291,9 +19291,9 @@ var require_lib = __commonJS({
         }
         return this._getProxyAgentDispatcher(parsedUrl, proxyUrl);
       }
-      _prepareRequest(method, requestUrl, headers) {
+      _prepareRequest(method, requestUrl2, headers) {
         const info2 = {};
-        info2.parsedUrl = requestUrl;
+        info2.parsedUrl = requestUrl2;
         const usingSsl = info2.parsedUrl.protocol === "https:";
         info2.httpModule = usingSsl ? https : http;
         const defaultPort = usingSsl ? 443 : 80;
@@ -19354,7 +19354,7 @@ var require_lib = __commonJS({
       _getExistingOrDefaultContentTypeHeader(additionalHeaders, _default) {
         let clientHeader;
         if (this.requestOptions && this.requestOptions.headers) {
-          const headerValue = lowercaseKeys2(this.requestOptions.headers)[Headers2.ContentType];
+          const headerValue = lowercaseKeys2(this.requestOptions.headers)[Headers3.ContentType];
           if (headerValue) {
             if (typeof headerValue === "number") {
               clientHeader = String(headerValue);
@@ -19365,7 +19365,7 @@ var require_lib = __commonJS({
             }
           }
         }
-        const additionalValue = additionalHeaders[Headers2.ContentType];
+        const additionalValue = additionalHeaders[Headers3.ContentType];
         if (additionalValue !== void 0) {
           if (typeof additionalValue === "number") {
             return String(additionalValue);
@@ -19762,11 +19762,11 @@ var HttpCodes;
   HttpCodes2[HttpCodes2["ServiceUnavailable"] = 503] = "ServiceUnavailable";
   HttpCodes2[HttpCodes2["GatewayTimeout"] = 504] = "GatewayTimeout";
 })(HttpCodes || (HttpCodes = {}));
-var Headers;
-(function(Headers2) {
-  Headers2["Accept"] = "accept";
-  Headers2["ContentType"] = "content-type";
-})(Headers || (Headers = {}));
+var Headers2;
+(function(Headers3) {
+  Headers3["Accept"] = "accept";
+  Headers3["ContentType"] = "content-type";
+})(Headers2 || (Headers2 = {}));
 var MediaTypes;
 (function(MediaTypes2) {
   MediaTypes2["ApplicationJson"] = "application/json";
@@ -20887,7 +20887,7 @@ async function fetchWrapper(requestOptions) {
   const log = requestOptions.request?.log || console;
   const parseSuccessResponseBody = requestOptions.request?.parseSuccessResponseBody !== false;
   const body = isPlainObject2(requestOptions.body) || Array.isArray(requestOptions.body) ? JSONStringify(requestOptions.body) : requestOptions.body;
-  const requestHeaders = Object.fromEntries(
+  const requestHeaders2 = Object.fromEntries(
     Object.entries(requestOptions.headers).map(([name, value]) => [
       name,
       String(value)
@@ -20899,7 +20899,7 @@ async function fetchWrapper(requestOptions) {
       method: requestOptions.method,
       body,
       redirect: requestOptions.request?.redirect,
-      headers: requestHeaders,
+      headers: requestHeaders2,
       signal: requestOptions.request?.signal,
       // duplex must be set if request.body is ReadableStream or Async Iterables.
       // See https://fetch.spec.whatwg.org/#dom-requestinit-duplex.
@@ -23798,7 +23798,7 @@ function normalizePaginatedListResponse(response) {
 }
 function iterator(octokit2, route, parameters) {
   const options = typeof route === "function" ? route.endpoint(parameters) : octokit2.request.endpoint(route, parameters);
-  const requestMethod = typeof route === "function" ? route : octokit2.request;
+  const requestMethod2 = typeof route === "function" ? route : octokit2.request;
   const method = options.method;
   const headers = options.headers;
   let url = options.url;
@@ -23807,7 +23807,7 @@ function iterator(octokit2, route, parameters) {
       async next() {
         if (!url) return { done: true };
         try {
-          const response = await requestMethod({ method, url, headers });
+          const response = await requestMethod2({ method, url, headers });
           const normalizedResponse = normalizePaginatedListResponse(response);
           url = ((normalizedResponse.headers.link || "").match(
             /<([^<>]+)>;\s*rel="next"/
@@ -23914,38 +23914,99 @@ function getOctokit(token, options, ...additionalPlugins) {
 // src/constants.ts
 var WORKFLOW_RUN_ACTIVE_JOB_TIMEOUT_MS = 3e4;
 var WORKFLOW_RUN_ACTIVE_JOB_POLL_INTERVAL_MS = 1e3;
+var ETAG_CACHE_MAX_ENTRIES = 16;
 
-// src/etags.ts
-var etagStore = /* @__PURE__ */ new Map();
-async function withEtag(endpoint2, params, requester) {
-  const { etag, savedResponse } = getEtag(endpoint2, params) ?? {};
-  const paramsWithEtag = { ...params };
-  if (etag)
-    paramsWithEtag.headers = {
-      "If-None-Match": etag,
-      ...params.headers ?? {}
-    };
-  const response = await requester(paramsWithEtag);
-  if (response.status === 304 && etag && etag === extractEtag(response) && savedResponse !== void 0) {
-    return savedResponse;
+// src/etag/cache.ts
+var store = /* @__PURE__ */ new Map();
+function getCachedResponse(key) {
+  const entry = store.get(key);
+  if (entry === void 0) {
+    return void 0;
   }
-  rememberEtag(endpoint2, params, response);
-  return response;
+  store.delete(key);
+  store.set(key, entry);
+  return entry;
 }
-function extractEtag(response) {
-  if ("string" !== typeof response.headers.etag) return;
-  return response.headers.etag.split('"')[1] ?? "";
+function setCachedResponse(key, entry) {
+  store.delete(key);
+  store.set(key, entry);
+  if (store.size > ETAG_CACHE_MAX_ENTRIES) {
+    const oldest = store.keys().next();
+    if (!oldest.done) {
+      store.delete(oldest.value);
+    }
+  }
 }
-function getEtag(endpoint2, params) {
-  return etagStore.get(JSON.stringify({ endpoint: endpoint2, params }));
+
+// src/etag/fetch.ts
+function withEtagCache(baseFetch) {
+  return async function etagFetch(input, init2) {
+    const method = requestMethod(input, init2);
+    const url = requestUrl(input);
+    const headers = requestHeaders(input, init2);
+    const key = cacheKey(method, url, headers);
+    const cached = headers.has("if-none-match") ? void 0 : getCachedResponse(key);
+    if (cached !== void 0) {
+      headers.set("if-none-match", cached.etag);
+    }
+    const response = await baseFetch(input, { ...init2, headers });
+    if (response.status === 304 && cached !== void 0) {
+      debug(`Reusing cached response for ${key}`);
+      return replayCached(cached, response);
+    }
+    if (method === "GET" && response.status === 200) {
+      const etag = response.headers.get("etag");
+      if (etag !== null) {
+        setCachedResponse(key, {
+          etag,
+          body: await response.clone().arrayBuffer(),
+          headers: [...response.headers]
+        });
+      }
+    }
+    return response;
+  };
 }
-function rememberEtag(endpoint2, params, response) {
-  const etag = extractEtag(response);
-  if (!etag) return;
-  etagStore.set(JSON.stringify({ endpoint: endpoint2, params }), {
-    etag,
-    savedResponse: response
+var REPRESENTATION_HEADERS = /* @__PURE__ */ new Set(["content-encoding", "content-length"]);
+var REFRESHED_HEADERS = /* @__PURE__ */ new Set(["date", "etag"]);
+function replayCached(cached, response) {
+  const headers = new Headers(cached.headers);
+  for (const name of REPRESENTATION_HEADERS) {
+    headers.delete(name);
+  }
+  for (const [name, value] of response.headers) {
+    if (REFRESHED_HEADERS.has(name) || name.startsWith("x-ratelimit-")) {
+      headers.set(name, value);
+    }
+  }
+  const replay = new Response(cached.body, {
+    status: 200,
+    statusText: "OK",
+    headers
   });
+  Object.defineProperty(replay, "url", { value: response.url });
+  return replay;
+}
+function cacheKey(method, url, headers) {
+  return `${method} ${url} (${headers.get("accept") ?? ""})`;
+}
+function requestUrl(input) {
+  if (typeof input === "string") {
+    return input;
+  }
+  if (input instanceof URL) {
+    return input.href;
+  }
+  return input.url;
+}
+function requestMethod(input, init2) {
+  const method = init2?.method ?? (input instanceof Request ? input.method : "GET");
+  return method.toUpperCase();
+}
+function requestHeaders(input, init2) {
+  return new Headers(
+    init2?.headers ?? (input instanceof Request ? input.headers : void 0)
+  );
 }
 
 // src/utils.ts
@@ -23954,25 +24015,22 @@ function sleep(ms) {
 }
 
 // src/api.ts
+var proxyAwareFetch = defaults.request?.fetch ?? globalThis.fetch;
 var config;
 var octokit;
 function init(cfg) {
   config = cfg ?? getConfig();
-  octokit = getOctokit(config.token);
+  octokit = getOctokit(config.token, {
+    request: { fetch: withEtagCache(proxyAwareFetch) }
+  });
 }
 async function fetchWorkflowRunState(runId) {
   try {
-    const response = await withEtag(
-      "getWorkflowRun",
-      {
-        owner: config.owner,
-        repo: config.repo,
-        run_id: runId
-      },
-      async (params) => {
-        return octokit.rest.actions.getWorkflowRun(params);
-      }
-    );
+    const response = await octokit.rest.actions.getWorkflowRun({
+      owner: config.owner,
+      repo: config.repo,
+      run_id: runId
+    });
     if (response.status !== 200) {
       throw new Error(
         `Failed to fetch Workflow Run state, expected 200 but received ${response.status}`
@@ -24269,6 +24327,33 @@ async function handleActionFail(failureMsg, runId) {
     );
   }
 }
+function getWorkflowRunStateResult(status, conclusion, attemptNo) {
+  const statusResult = getWorkflowRunStatusResult(status, attemptNo);
+  if (!statusResult.success) {
+    return statusResult.reason === "unsupported" ? statusResult : void 0;
+  }
+  const conclusionResult = getWorkflowRunConclusionResult(conclusion);
+  if (conclusionResult.success || conclusionResult.reason === "inconclusive") {
+    return {
+      success: true,
+      value: {
+        status: statusResult.value,
+        conclusion: conclusionResult.value
+      }
+    };
+  }
+  if (conclusionResult.reason === "timed_out") {
+    return {
+      success: false,
+      reason: "timeout"
+    };
+  }
+  return {
+    success: false,
+    reason: "unsupported",
+    value: conclusionResult.value
+  };
+}
 async function getWorkflowRunResult({
   startTime,
   runId,
@@ -24287,32 +24372,13 @@ async function getWorkflowRunResult({
     );
     if (fetchWorkflowRunStateResult.success) {
       const { status, conclusion } = fetchWorkflowRunStateResult.value;
-      const statusResult = getWorkflowRunStatusResult(status, attemptNo);
-      if (statusResult.success) {
-        const conclusionResult = getWorkflowRunConclusionResult(conclusion);
-        if (conclusionResult.success || conclusionResult.reason === "inconclusive") {
-          return {
-            success: true,
-            value: {
-              status: statusResult.value,
-              conclusion: conclusionResult.value
-            }
-          };
-        }
-        if (conclusionResult.reason === "timed_out") {
-          return {
-            success: false,
-            reason: "timeout"
-          };
-        }
-        return {
-          success: false,
-          reason: "unsupported",
-          value: conclusionResult.value
-        };
-      }
-      if (statusResult.reason === "unsupported") {
-        return statusResult;
+      const stateResult = getWorkflowRunStateResult(
+        status,
+        conclusion,
+        attemptNo
+      );
+      if (stateResult !== void 0) {
+        return stateResult;
       }
     } else {
       debug(`Failed to fetch run state, attempt ${attemptNo}...`);

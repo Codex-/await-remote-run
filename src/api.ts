@@ -1,9 +1,10 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
+import { defaults as githubDefaults } from "@actions/github/lib/utils";
 
 import { type ActionConfig, getConfig } from "./action.ts";
 import * as constants from "./constants.ts";
-import { withEtag } from "./etags.ts";
+import { withEtagCache } from "./etag/fetch.ts";
 import type {
   Result,
   WorkflowRunCancelResult,
@@ -14,12 +15,25 @@ import { sleep } from "./utils.ts";
 
 type Octokit = ReturnType<(typeof github)["getOctokit"]>;
 
+/**
+ * The fetch `@actions/github` resolves proxy configuration into.
+ *
+ * Supplying `request.fetch` replaces the entire `request` defaults object, so
+ * this has to be wrapped rather than `globalThis.fetch` for a self-hosted
+ * runner behind a proxy to keep working. Octokit types the option as `any`.
+ */
+const proxyAwareFetch =
+  (githubDefaults.request?.fetch as typeof globalThis.fetch | undefined) ??
+  globalThis.fetch;
+
 let config: ActionConfig;
 let octokit: Octokit;
 
 export function init(cfg?: ActionConfig): void {
   config = cfg ?? getConfig();
-  octokit = github.getOctokit(config.token);
+  octokit = github.getOctokit(config.token, {
+    request: { fetch: withEtagCache(proxyAwareFetch) },
+  });
 }
 
 interface WorkflowRunState {
@@ -31,19 +45,15 @@ export async function fetchWorkflowRunState(
   runId: number,
 ): Promise<WorkflowRunState> {
   try {
-    const response = await withEtag(
-      "getWorkflowRun",
-      {
-        owner: config.owner,
-        repo: config.repo,
-        run_id: runId,
-      },
-      async (params) => {
-        // https://docs.github.com/en/rest/actions/workflow-runs#get-a-workflow-run
-        return octokit.rest.actions.getWorkflowRun(params);
-      },
-    );
+    // https://docs.github.com/en/rest/actions/workflow-runs#get-a-workflow-run
+    const response = await octokit.rest.actions.getWorkflowRun({
+      owner: config.owner,
+      repo: config.repo,
+      run_id: runId,
+    });
 
+    // A non-200 is possible, the types aren't the best
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     if (response.status !== 200) {
       throw new Error(
         `Failed to fetch Workflow Run state, expected 200 but received ${response.status}`,

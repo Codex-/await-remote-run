@@ -20,7 +20,6 @@ import {
   retryOnError,
 } from "./api.ts";
 import * as constants from "./constants.ts";
-import { clearEtags } from "./etags.ts";
 import { mockLoggingFunctions } from "./test-utils/logging.mock.ts";
 
 vi.mock("@actions/core");
@@ -62,10 +61,6 @@ function mockHttpError(
     response: { headers: headers },
   });
 }
-
-afterEach(() => {
-  clearEtags();
-});
 
 describe("API", () => {
   const cfg = {
@@ -156,95 +151,6 @@ describe("API", () => {
         `"fetchWorkflowRunState: An unexpected error has occurred: Failed to fetch Workflow Run state, expected 200 but received 401"`,
       );
       expect(coreDebugLogMock).toHaveBeenCalledOnce();
-    });
-
-    it("should send the previous etag in the If-None-Match header", async () => {
-      const mockData = {
-        status: "completed",
-        conclusion: "cancelled",
-      };
-      const etag =
-        "37c2311495bbea359329d0bb72561bdb2b2fffea1b7a54f696b5a287e7ccad1e";
-      let submittedEtag = null;
-      vi.spyOn(mockOctokit.rest.actions, "getWorkflowRun").mockReturnValue(
-        Promise.resolve({
-          data: mockData,
-          status: 200,
-          headers: {},
-        }),
-      );
-      vi.spyOn(mockOctokit.rest.actions, "getWorkflowRun").mockImplementation(
-        ({ headers }) => {
-          if (headers?.["If-None-Match"]) {
-            submittedEtag = headers["If-None-Match"];
-            return Promise.resolve({
-              data: null,
-              status: 304,
-              headers: {
-                etag: `W/"${submittedEtag}"`,
-              },
-            });
-          }
-          return Promise.resolve({
-            data: mockData,
-            status: 200,
-            headers: {
-              etag: `W/"${etag}"`,
-            },
-          });
-        },
-      );
-
-      // Behaviour
-      // First API call will return 200 with an etag response header
-      const state = await fetchWorkflowRunState(123456);
-      expect(state.conclusion).toStrictEqual("cancelled");
-      expect(state.status).toStrictEqual("completed");
-      // Second API call with same parameters should pass the If-None-Match header
-      const state2 = await fetchWorkflowRunState(123456);
-      expect(state2.conclusion).toStrictEqual(mockData.conclusion);
-      expect(state2.status).toStrictEqual(mockData.status);
-    });
-
-    it("should not send the previous etag in the If-None-Match header when different request params are used", async () => {
-      const mockData = {
-        status: "completed",
-        conclusion: "cancelled",
-      };
-      const etag =
-        "37c2311495bbea359329d0bb72561bdb2b2fffea1b7a54f696b5a287e7ccad1e";
-      let submittedEtag = null;
-      vi.spyOn(mockOctokit.rest.actions, "getWorkflowRun").mockImplementation(
-        ({ headers }) => {
-          if (headers?.["If-None-Match"]) {
-            submittedEtag = headers["If-None-Match"];
-            return Promise.resolve({
-              data: null,
-              status: 304,
-              headers: {
-                etag: `W/"${submittedEtag}"`,
-              },
-            });
-          }
-          return Promise.resolve({
-            data: mockData,
-            status: 200,
-            headers: {
-              etag: `W/"${etag}"`,
-            },
-          });
-        },
-      );
-
-      // Behaviour
-      // First API call will return 200 with an etag response header
-      const state = await fetchWorkflowRunState(123456);
-      expect(state.conclusion).toStrictEqual("cancelled");
-      expect(state.status).toStrictEqual("completed");
-      // Second API call, without If-None-Match header because of different parameters
-      const state2 = await fetchWorkflowRunState(123457);
-      expect(state2.conclusion).toStrictEqual("cancelled");
-      expect(state2.status).toStrictEqual("completed");
     });
   });
 

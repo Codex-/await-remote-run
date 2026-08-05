@@ -20,3 +20,11 @@ export const WORKFLOW_RUN_ACTIVE_JOB_TIMEOUT_MS: number = 30_000;
  * the full timeout window above.
  */
 export const WORKFLOW_RUN_ACTIVE_JOB_POLL_INTERVAL_MS: number = 1_000;
+
+/**
+ * How many response bodies to retain for conditional requests.
+ *
+ * The action only polls a couple of distinct URLs, so this sits well above
+ * what a run needs and exists to bound memory should that ever change.
+ */
+export const ETAG_CACHE_MAX_ENTRIES: number = 16;
