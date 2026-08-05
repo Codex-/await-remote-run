@@ -39,7 +39,7 @@
     "@types/node": "24.13.3",
     "@vitest/coverage-v8": "4.1.10",
     "chalk": "6.0.0",
-    "changelogithub": "14.0.0",
+    "changelogithub": "15.0.4",
     "esbuild": "0.28.1",
     "eslint": "10.8.0",
     "eslint-config-prettier": "10.1.8",
