@@ -246,6 +246,49 @@ describe("etag-fetch", () => {
       assertNoneCalled();
     });
 
+    it("should not replay a cached body for a caller's own conditional request", async () => {
+      const stub = stubFetch(({ ifNoneMatch }): StubResponse =>
+        ifNoneMatch === null
+          ? {
+              status: 200,
+              body: "{}",
+              headers: { "content-type": "application/json", etag: ETAG },
+            }
+          : { status: 304, headers: { etag: ETAG } },
+      );
+      const fetch = withEtagCache(stub.fetch);
+
+      // Behaviour
+      await fetch(URL_A);
+      // Distinct from the cached etag, so a stomped header would be visible.
+      const callerEtag = 'W/"the-callers-own-etag"';
+      const response = await fetch(URL_A, {
+        headers: { "if-none-match": callerEtag },
+      });
+      expect(stub.calls[1]?.ifNoneMatch).toStrictEqual(callerEtag);
+      expect(response.status).toStrictEqual(304);
+    });
+
+    it("should key a URL input as its string form", async () => {
+      const stub = unchangingResource();
+      const fetch = withEtagCache(stub.fetch);
+
+      // Behaviour
+      await fetch(URL_A);
+      await fetch(new URL(URL_A));
+      expect(stub.calls[1]?.ifNoneMatch).toStrictEqual(ETAG);
+    });
+
+    it("should condition a Request input", async () => {
+      const stub = unchangingResource();
+      const fetch = withEtagCache(stub.fetch);
+
+      // Behaviour
+      await fetch(URL_A);
+      await fetch(new Request(URL_A));
+      expect(stub.calls[1]?.ifNoneMatch).toStrictEqual(ETAG);
+    });
+
     it("should cache each URL separately", async () => {
       const stub = unchangingResource();
       const fetch = withEtagCache(stub.fetch);

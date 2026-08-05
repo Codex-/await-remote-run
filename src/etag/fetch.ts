@@ -31,7 +31,12 @@ export function withEtagCache(baseFetch: FetchFn): FetchFn {
     const headers = requestHeaders(input, init);
     const key = cacheKey(method, url, headers);
 
-    const cached = method === "GET" ? getCachedResponse(key) : undefined;
+    // The key covers the method, so only a GET can match. It does not cover
+    // `if-none-match`, so a caller making its own conditional request has to be
+    // excluded here to keep the 304 it asked for.
+    const cached = headers.has("if-none-match")
+      ? undefined
+      : getCachedResponse(key);
     if (cached !== undefined) {
       // Sent verbatim, as a bare token is not a valid entity-tag and so never
       // matches. https://www.rfc-editor.org/rfc/rfc9110#field.if-none-match
