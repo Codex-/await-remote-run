@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Dispatch and return Run ID
         id: return_dispatch
-        uses: Codex-/return-dispatch@c3a4d068240b83dcbd2d2e2e0826a0200518d001 # main
+        uses: Codex-/return-dispatch@8aa4160d337a9c85b6412f88ecf88fa1264c173b # main
         with:
           token: ${{ secrets.TOKEN }}
           ref: main
