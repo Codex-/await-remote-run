@@ -20144,8 +20144,15 @@ function getConfig() {
     runId: getRunIdFromValue(getInput("run_id")),
     runTimeoutSeconds,
     cancelTimeoutSeconds,
-    pollIntervalMs: getNumberFromValue(getInput("poll_interval_ms")) ?? POLL_INTERVAL_MS
+    pollIntervalMs: getNumberFromValue(getInput("poll_interval_ms")) ?? POLL_INTERVAL_MS,
+    jobs: getJobsFromValue(getInput("jobs"))
   };
+}
+function getJobsFromValue(value) {
+  const jobs = new Set(
+    value.split("\n").map((job) => job.trim()).filter((job) => job !== "")
+  );
+  return jobs.size > 0 ? [...jobs] : void 0;
 }
 function getRunIdFromValue(value) {
   const id = getNumberFromValue(value);
@@ -23915,6 +23922,7 @@ function getOctokit(token, options, ...additionalPlugins) {
 var WORKFLOW_RUN_ACTIVE_JOB_TIMEOUT_MS = 3e4;
 var WORKFLOW_RUN_ACTIVE_JOB_POLL_INTERVAL_MS = 1e3;
 var ETAG_CACHE_MAX_ENTRIES = 16;
+var JOBS_PER_PAGE = 100;
 
 // src/etag/cache.ts
 var store = /* @__PURE__ */ new Map();
@@ -24108,27 +24116,31 @@ async function requestWorkflowRunCancel(runId) {
   }
 }
 async function fetchWorkflowRunJobs(runId) {
+  return octokit.paginate(octokit.rest.actions.listJobsForWorkflowRun, {
+    owner: config.owner,
+    repo: config.repo,
+    run_id: runId,
+    filter: "latest",
+    per_page: JOBS_PER_PAGE
+  });
+}
+async function fetchWorkflowRunJobsFirstPage(runId) {
   const response = await octokit.rest.actions.listJobsForWorkflowRun({
     owner: config.owner,
     repo: config.repo,
     run_id: runId,
-    filter: "latest"
+    filter: "latest",
+    per_page: JOBS_PER_PAGE
   });
-  if (response.status !== 200) {
-    throw new Error(
-      `Failed to fetch Jobs for Workflow Run, expected 200 but received ${response.status}`
-    );
-  }
-  return response;
+  return response.data.jobs;
 }
 async function fetchWorkflowRunFailedJobs(runId) {
   try {
-    const response = await fetchWorkflowRunJobs(runId);
-    const fetchedFailedJobs = response.data.jobs.filter(
-      (job) => job.conclusion === "failure"
+    const fetchedFailedJobs = (await fetchWorkflowRunJobs(runId)).filter(
+      (job) => job.status === "completed" && job.conclusion !== "success" && job.conclusion !== "skipped"
     );
     if (fetchedFailedJobs.length <= 0) {
-      warning(`Failed to find failed Jobs for Workflow Run ${runId}`);
+      info(`Found no unsuccessful Jobs for Workflow Run ${runId}`);
       return [];
     }
     const jobs = fetchedFailedJobs.map((job) => {
@@ -24175,10 +24187,36 @@ async function fetchWorkflowRunFailedJobs(runId) {
     throw error2;
   }
 }
+async function fetchWorkflowRunJobStates(runId) {
+  try {
+    const jobs = (await fetchWorkflowRunJobs(runId)).map((job) => ({
+      name: job.name,
+      status: job.status,
+      conclusion: job.conclusion
+    }));
+    const jobStates = jobs.map(
+      (job) => `${job.name} (${job.status}, ${job.conclusion})`
+    );
+    debug(
+      `Fetched Job states for Run:
+  Repository: ${config.owner}/${config.repo}
+  Run ID: ${runId}
+  Jobs: [${jobStates.join(", ")}]`
+    );
+    return jobs;
+  } catch (error2) {
+    if (error2 instanceof Error) {
+      error(
+        `fetchWorkflowRunJobStates: An unexpected error has occurred: ${error2.message}`
+      );
+      debug(error2.stack ?? "");
+    }
+    throw error2;
+  }
+}
 async function fetchWorkflowRunActiveJobUrl(runId) {
   try {
-    const response = await fetchWorkflowRunJobs(runId);
-    const fetchedInProgressJobs = response.data.jobs.filter(
+    const fetchedInProgressJobs = (await fetchWorkflowRunJobsFirstPage(runId)).filter(
       (job) => job.status === "in_progress" || job.status === "completed"
     );
     const inProgressJobs = fetchedInProgressJobs.map(
@@ -24248,6 +24286,9 @@ async function retryOnError(func, timeoutMs, functionName) {
     reason: "timeout"
   };
 }
+
+// src/types.ts
+var POLL_PENDING = { done: false };
 
 // src/await-remote-run.ts
 function getWorkflowRunStatusResult(status, attemptNo) {
@@ -24330,58 +24371,47 @@ async function handleActionFail(failureMsg, runId) {
 function getWorkflowRunStateResult(status, conclusion, attemptNo) {
   const statusResult = getWorkflowRunStatusResult(status, attemptNo);
   if (!statusResult.success) {
-    return statusResult.reason === "unsupported" ? statusResult : void 0;
+    return statusResult.reason === "unsupported" ? { done: true, value: statusResult } : POLL_PENDING;
   }
   const conclusionResult = getWorkflowRunConclusionResult(conclusion);
   if (conclusionResult.success || conclusionResult.reason === "inconclusive") {
     return {
-      success: true,
+      done: true,
       value: {
-        status: statusResult.value,
-        conclusion: conclusionResult.value
+        success: true,
+        value: {
+          status: statusResult.value,
+          conclusion: conclusionResult.value
+        }
       }
     };
   }
   if (conclusionResult.reason === "timed_out") {
     return {
-      success: false,
-      reason: "timeout"
+      done: true,
+      value: {
+        success: false,
+        reason: "timeout"
+      }
     };
   }
   return {
-    success: false,
-    reason: "unsupported",
-    value: conclusionResult.value
+    done: true,
+    value: {
+      success: false,
+      reason: "unsupported",
+      value: conclusionResult.value
+    }
   };
 }
-async function getWorkflowRunResult({
-  startTime,
-  runId,
-  runTimeoutMs,
-  pollIntervalMs,
-  cancelTimeoutMs
-}) {
+async function pollRun({ startTime, runId, runTimeoutMs, pollIntervalMs, cancelTimeoutMs }, attempt) {
   let attemptNo = 0;
   let cancelRequested = false;
   while (Date.now() - startTime < runTimeoutMs) {
     attemptNo++;
-    const fetchWorkflowRunStateResult = await retryOnError(
-      async () => fetchWorkflowRunState(runId),
-      400,
-      "fetchWorkflowRunState"
-    );
-    if (fetchWorkflowRunStateResult.success) {
-      const { status, conclusion } = fetchWorkflowRunStateResult.value;
-      const stateResult = getWorkflowRunStateResult(
-        status,
-        conclusion,
-        attemptNo
-      );
-      if (stateResult !== void 0) {
-        return stateResult;
-      }
-    } else {
-      debug(`Failed to fetch run state, attempt ${attemptNo}...`);
+    const attempted = await attempt(attemptNo);
+    if (attempted.done) {
+      return attempted.value;
     }
     const elapsedTime = Date.now() - startTime;
     if (cancelTimeoutMs !== void 0 && !cancelRequested && elapsedTime >= cancelTimeoutMs) {
@@ -24398,8 +24428,131 @@ async function getWorkflowRunResult({
     reason: "timeout"
   };
 }
+async function getWorkflowRunResult(opts) {
+  return pollRun(opts, async (attemptNo) => {
+    const fetchWorkflowRunStateResult = await retryOnError(
+      async () => fetchWorkflowRunState(opts.runId),
+      400,
+      "fetchWorkflowRunState"
+    );
+    if (!fetchWorkflowRunStateResult.success) {
+      debug(`Failed to fetch run state, attempt ${attemptNo}...`);
+      return POLL_PENDING;
+    }
+    const { status, conclusion } = fetchWorkflowRunStateResult.value;
+    return getWorkflowRunStateResult(status, conclusion, attemptNo);
+  });
+}
+function getWorkflowRunJobsStateResult(awaited, jobs, runCompleted) {
+  const byName = Map.groupBy(jobs, (job) => job.name);
+  const concluded = [];
+  const inconclusive = [];
+  const missing = [];
+  for (const name of awaited) {
+    const named = byName.get(name) ?? [];
+    const failed = named.filter(
+      (job) => job.status === "completed" && job.conclusion !== "success" /* Success */
+    );
+    if (failed.length > 0) {
+      inconclusive.push(...failed);
+    } else if (named.length > 0 && named.every((job) => job.status === "completed")) {
+      concluded.push(...named);
+    } else {
+      missing.push(name);
+    }
+  }
+  if (inconclusive.length > 0) {
+    for (const job of inconclusive) {
+      error(
+        `Job ${job.name} has failed with conclusion: ${String(job.conclusion)}`
+      );
+    }
+    return {
+      done: true,
+      value: { success: false, reason: "inconclusive", value: inconclusive }
+    };
+  }
+  if (missing.length === 0) {
+    return { done: true, value: { success: true, value: concluded } };
+  }
+  if (runCompleted) {
+    const observed = jobs.map((job) => job.name);
+    error(
+      `Run concluded without the awaited Jobs completing:
+  Awaited: [${missing.join(", ")}]
+  Jobs in run: [${observed.join(", ")}]`
+    );
+    return {
+      done: true,
+      value: {
+        success: false,
+        reason: "missing",
+        value: { missing, observed }
+      }
+    };
+  }
+  return POLL_PENDING;
+}
+async function getWorkflowRunJobsResult(opts) {
+  let runCompletedLastPoll = false;
+  const result = await pollRun(opts, async (attemptNo) => {
+    const statesResult = await retryOnError(
+      async () => Promise.all([
+        fetchWorkflowRunState(opts.runId),
+        fetchWorkflowRunJobStates(opts.runId)
+      ]),
+      400,
+      "fetchWorkflowRunState & fetchWorkflowRunJobStates"
+    );
+    if (!statesResult.success) {
+      debug(`Failed to fetch run state and Jobs, attempt ${attemptNo}...`);
+      return POLL_PENDING;
+    }
+    const [runState, jobs] = statesResult.value;
+    const runCompleted = runState.status === "completed" /* Completed */;
+    const completionConfirmed = runCompleted && runCompletedLastPoll;
+    runCompletedLastPoll = runCompleted;
+    return getWorkflowRunJobsStateResult(opts.jobs, jobs, completionConfirmed);
+  });
+  if (!result.success && result.reason === "inconclusive" && opts.cancelTimeoutMs !== void 0) {
+    warning(
+      `Awaited Jobs have concluded unsuccessfully, requesting cancellation of Workflow Run ${opts.runId}`
+    );
+    await requestWorkflowRunCancel(opts.runId);
+  }
+  return result;
+}
 
 // src/main.ts
+async function handleJobsResult(result, runId, startTime) {
+  if (result.success) {
+    const names = result.value.map((job) => job.name);
+    info(
+      `Awaited Jobs Completed:
+  Run ID: ${runId}
+  Jobs: [${names.join(", ")}]`
+    );
+    return;
+  }
+  let failureMsg;
+  switch (result.reason) {
+    case "timeout": {
+      const elapsedTime = Date.now() - startTime;
+      failureMsg = `Timeout exceeded while attempting to await the Jobs concluding (${elapsedTime}ms)`;
+      break;
+    }
+    case "inconclusive": {
+      const failed = result.value.map((job) => `${job.name} (${String(job.conclusion)})`).join(", ");
+      failureMsg = `Awaited Jobs have concluded unsuccessfully: ${failed}`;
+      break;
+    }
+    case "missing": {
+      failureMsg = `Run concluded without the awaited Jobs completing: ${result.value.missing.join(", ")}`;
+      break;
+    }
+  }
+  await handleActionFail(failureMsg, runId);
+}
 async function main() {
   try {
     const startTime = Date.now();
@@ -24415,18 +24568,28 @@ async function main() {
       );
     }
     const runUrl = `https://github.com/${config2.owner}/${config2.repo}/actions/runs/${config2.runId}`;
+    const awaiting = config2.jobs === void 0 ? `Workflow Run ${config2.runId}` : `Jobs [${config2.jobs.join(", ")}] in Workflow Run ${config2.runId}`;
     info(
-      `Awaiting completion of Workflow Run ${config2.runId}...
+      `Awaiting completion of ${awaiting}...
   ID: ${config2.runId}
   URL: ${activeJobUrlResult.success ? activeJobUrlResult.value : runUrl}`
     );
-    const runResult = await getWorkflowRunResult({
+    const runOpts = {
       startTime,
       pollIntervalMs: config2.pollIntervalMs,
       runId: config2.runId,
       runTimeoutMs: config2.runTimeoutSeconds * 1e3,
       cancelTimeoutMs: config2.cancelTimeoutSeconds === void 0 ? void 0 : config2.cancelTimeoutSeconds * 1e3
-    });
+    };
+    if (config2.jobs !== void 0) {
+      const jobsResult = await getWorkflowRunJobsResult({
+        ...runOpts,
+        jobs: config2.jobs
+      });
+      await handleJobsResult(jobsResult, config2.runId, startTime);
+      return;
+    }
+    const runResult = await getWorkflowRunResult(runOpts);
     if (!runResult.success) {
       const elapsedTime = Date.now() - startTime;
       const failureMsg = runResult.reason === "timeout" ? `Timeout exceeded while attempting to await run conclusion (${elapsedTime}ms)` : `An unsupported value was reached: ${runResult.value}`;
