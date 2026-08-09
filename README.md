@@ -62,6 +62,46 @@ steps:
       poll_interval_ms: 5000 # Optional
 ```
 
+### Awaiting specific jobs
+
+Set `jobs` to await named jobs within the run rather than the run itself, one name per
+line. This suits a remote run whose later jobs you don't need to gate on, such as
+awaiting `build` while its `deploy` continues.
+
+```yaml
+- name: Await the remote build
+  uses: Codex-/await-remote-run@v2
+  with:
+    token: ${{ github.token }}
+    repo: repository-name
+    owner: repository-owner
+    run_id: ${{ steps.return_dispatch.outputs.run_id }}
+    jobs: |
+      build
+```
+
+The action resolves once every listed job has concluded with `success`, leaving the rest
+of the run in flight. Any other conclusion, `skipped` included, fails the action
+immediately without awaiting the remaining jobs. `cancel_timeout_seconds` still applies
+to the timeout, but a run whose awaited jobs concluded is never cancelled.
+
+#### Matching job names
+
+Names must match the name GitHub reports, which is not always the workflow's job key:
+
+| Remote workflow                      | Name to use                 |
+| ------------------------------------ | --------------------------- |
+| `build:` with a `name:` set          | the `name:` value           |
+| `build:` using `strategy.matrix`     | `build (ubuntu-latest, 20)` |
+| `build:` calling a reusable workflow | `build / inner-job-name`    |
+
+The list is split on newlines only, as a matrix job carries commas in its name.
+
+Jobs appear as they become eligible, so one still blocked on `needs` is absent rather
+than pending. The action keeps awaiting a name it cannot yet see, failing only once the
+run concludes without it. That failure lists every job the run did produce, which is the
+quickest way to spot a name that never matched.
+
 ### Cancelling the remote run
 
 Giving up on a remote run leaves it running, which is a problem if your workflow tears down something that run depends on, such as a test environment.
