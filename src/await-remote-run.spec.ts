@@ -1200,7 +1200,7 @@ describe("await-remote-run", () => {
         assertOnlyCalled(coreDebugLogMock);
         expect(coreDebugLogMock).toHaveBeenCalledOnce();
         expect(coreDebugLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
-          `"Failed to fetch run Jobs, attempt 1..."`,
+          `"Failed to fetch run state and Jobs, attempt 1..."`,
         );
       });
     });

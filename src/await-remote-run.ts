@@ -326,10 +326,10 @@ export async function getWorkflowRunJobsResult(
           fetchWorkflowRunJobStates(opts.runId),
         ]),
       400,
-      "fetchWorkflowRunJobStates",
+      "fetchWorkflowRunState & fetchWorkflowRunJobStates",
     );
     if (!statesResult.success) {
-      core.debug(`Failed to fetch run Jobs, attempt ${attemptNo}...`);
+      core.debug(`Failed to fetch run state and Jobs, attempt ${attemptNo}...`);
       return POLL_PENDING;
     }
 
