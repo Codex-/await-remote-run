@@ -312,6 +312,9 @@ export function getWorkflowRunJobsStateResult(
 export async function getWorkflowRunJobsResult(
   opts: RunOpts & { jobs: string[] },
 ): Promise<JobsResult> {
+  // The Jobs listing can briefly lag a freshly completed run, so a `missing`
+  // verdict needs completion to hold for two polls before it is terminal.
+  let runCompletedLastPoll = false;
   return pollRun(opts, async (attemptNo) => {
     const statesResult = await retryOnError(
       async () =>
@@ -328,10 +331,10 @@ export async function getWorkflowRunJobsResult(
     }
 
     const [runState, jobs] = statesResult.value;
-    return getWorkflowRunJobsStateResult(
-      opts.jobs,
-      jobs,
-      runState.status === WorkflowRunStatus.Completed,
-    );
+    const runCompleted = runState.status === WorkflowRunStatus.Completed;
+    const completionConfirmed = runCompleted && runCompletedLastPoll;
+    runCompletedLastPoll = runCompleted;
+
+    return getWorkflowRunJobsStateResult(opts.jobs, jobs, completionConfirmed);
   });
 }

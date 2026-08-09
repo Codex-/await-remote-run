@@ -1062,9 +1062,42 @@ describe("await-remote-run", () => {
           reason: "missing",
           value: { missing: ["deploy"], observed: ["build"] },
         });
+        // Completion must hold for two polls before `missing` is terminal.
+        expect(apiFetchWorkflowRunJobStatesMock).toHaveBeenCalledTimes(2);
 
         // Logging
         assertOnlyCalled(coreErrorLogMock);
+      });
+
+      it("succeeds when the Jobs listing lags the run completing", async () => {
+        apiFetchWorkflowRunStateMock.mockResolvedValue({
+          status: WorkflowRunStatus.Completed,
+          conclusion: WorkflowRunConclusion.Success,
+        });
+        // The awaited Job succeeded, but the listing has yet to reflect it.
+        apiFetchWorkflowRunJobStatesMock
+          .mockResolvedValue([succeeded])
+          .mockResolvedValueOnce([
+            { name: "build", status: "in_progress", conclusion: null },
+          ]);
+
+        // Behaviour
+        const resultPromise = getWorkflowRunJobsResult({
+          startTime: Date.now(),
+          pollIntervalMs: pollIntervalMs,
+          runId: 0,
+          runTimeoutMs: runTimeoutMs,
+          jobs: ["build"],
+        });
+        await vi.advanceTimersByTimeAsync(runTimeoutMs);
+
+        expect(await resultPromise).toStrictEqual({
+          success: true,
+          value: [succeeded],
+        });
+
+        // Logging
+        assertNoneCalled();
       });
 
       it("times out while the awaited Job never completes", async () => {
