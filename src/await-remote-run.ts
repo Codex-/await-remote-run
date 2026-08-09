@@ -2,14 +2,19 @@ import * as core from "@actions/core";
 
 import {
   fetchWorkflowRunFailedJobs,
+  fetchWorkflowRunJobStates,
   fetchWorkflowRunState,
   requestWorkflowRunCancel,
   retryOnError,
+  type WorkflowRunJobState,
 } from "./api.ts";
 import {
+  POLL_PENDING,
   WorkflowRunConclusion,
   WorkflowRunStatus,
+  type PollAttempt,
   type WorkflowRunConclusionResult,
+  type WorkflowRunJobsResult,
   type WorkflowRunResult,
   type WorkflowRunStatusResult,
 } from "./types.ts";
@@ -112,44 +117,55 @@ export async function handleActionFail(
 }
 
 /**
- * The result a fetched state resolves to, or undefined while the run has yet to
+ * The result a fetched state settles on, or pending while the run has yet to
  * resolve and is worth polling for again.
  */
 function getWorkflowRunStateResult(
   status: WorkflowRunStatus | null,
   conclusion: WorkflowRunConclusion | null,
   attemptNo: number,
-): WorkflowRunResult | undefined {
+): PollAttempt<WorkflowRunResult> {
   const statusResult = getWorkflowRunStatusResult(status, attemptNo);
   if (!statusResult.success) {
     // An unsupported status may never resolve, unlike a pending one. Alert to
     // raise this so we can handle it properly.
-    return statusResult.reason === "unsupported" ? statusResult : undefined;
+    return statusResult.reason === "unsupported"
+      ? { done: true, value: statusResult }
+      : POLL_PENDING;
   }
 
   // We only get a conclusion should the status resolve, otherwise it is null.
   const conclusionResult = getWorkflowRunConclusionResult(conclusion);
   if (conclusionResult.success || conclusionResult.reason === "inconclusive") {
     return {
-      success: true,
+      done: true,
       value: {
-        status: statusResult.value,
-        conclusion: conclusionResult.value,
+        success: true,
+        value: {
+          status: statusResult.value,
+          conclusion: conclusionResult.value,
+        },
       },
     };
   }
 
   if (conclusionResult.reason === "timed_out") {
     return {
-      success: false,
-      reason: "timeout",
+      done: true,
+      value: {
+        success: false,
+        reason: "timeout",
+      },
     };
   }
 
   return {
-    success: false,
-    reason: "unsupported",
-    value: conclusionResult.value,
+    done: true,
+    value: {
+      success: false,
+      reason: "unsupported",
+      value: conclusionResult.value,
+    },
   };
 }
 
@@ -160,35 +176,23 @@ interface RunOpts {
   runTimeoutMs: number;
   cancelTimeoutMs?: number;
 }
-export async function getWorkflowRunResult({
-  startTime,
-  runId,
-  runTimeoutMs,
-  pollIntervalMs,
-  cancelTimeoutMs,
-}: RunOpts): Promise<WorkflowRunResult> {
+
+/**
+ * Poll the run until `attempt` settles on a result or the run timeout elapses,
+ * requesting cancellation on the way if one was configured.
+ */
+async function pollRun<T>(
+  { startTime, runId, runTimeoutMs, pollIntervalMs, cancelTimeoutMs }: RunOpts,
+  attempt: (attemptNo: number) => Promise<PollAttempt<T>>,
+): Promise<T | { success: false; reason: "timeout" }> {
   let attemptNo = 0;
   let cancelRequested = false;
   while (Date.now() - startTime < runTimeoutMs) {
     attemptNo++;
 
-    const fetchWorkflowRunStateResult = await retryOnError(
-      async () => fetchWorkflowRunState(runId),
-      400,
-      "fetchWorkflowRunState",
-    );
-    if (fetchWorkflowRunStateResult.success) {
-      const { status, conclusion } = fetchWorkflowRunStateResult.value;
-      const stateResult = getWorkflowRunStateResult(
-        status,
-        conclusion,
-        attemptNo,
-      );
-      if (stateResult !== undefined) {
-        return stateResult;
-      }
-    } else {
-      core.debug(`Failed to fetch run state, attempt ${attemptNo}...`);
+    const attempted = await attempt(attemptNo);
+    if (attempted.done) {
+      return attempted.value;
     }
 
     const elapsedTime = Date.now() - startTime;
@@ -214,4 +218,152 @@ export async function getWorkflowRunResult({
     success: false,
     reason: "timeout",
   };
+}
+
+export async function getWorkflowRunResult(
+  opts: RunOpts,
+): Promise<WorkflowRunResult> {
+  return pollRun(opts, async (attemptNo) => {
+    const fetchWorkflowRunStateResult = await retryOnError(
+      async () => fetchWorkflowRunState(opts.runId),
+      400,
+      "fetchWorkflowRunState",
+    );
+    if (!fetchWorkflowRunStateResult.success) {
+      core.debug(`Failed to fetch run state, attempt ${attemptNo}...`);
+      return POLL_PENDING;
+    }
+
+    const { status, conclusion } = fetchWorkflowRunStateResult.value;
+    return getWorkflowRunStateResult(status, conclusion, attemptNo);
+  });
+}
+
+export type JobsResult = WorkflowRunJobsResult<WorkflowRunJobState>;
+
+/**
+ * The result the awaited Jobs settle on, or pending while they have yet to.
+ *
+ * A Job absent from `jobs` is only terminal once the run has completed, as
+ * until then it may still be created.
+ *
+ * GitHub permits Jobs to share a name, so an awaited name covers every Job
+ * bearing it.
+ */
+export function getWorkflowRunJobsStateResult(
+  awaited: string[],
+  jobs: WorkflowRunJobState[],
+  runCompleted: boolean,
+): PollAttempt<JobsResult> {
+  const byName = Map.groupBy(jobs, (job) => job.name);
+  const concluded: WorkflowRunJobState[] = [];
+  const inconclusive: WorkflowRunJobState[] = [];
+  const missing: string[] = [];
+
+  for (const name of awaited) {
+    const named = byName.get(name) ?? [];
+    const failed = named.filter(
+      (job) =>
+        job.status === "completed" &&
+        job.conclusion !== WorkflowRunConclusion.Success,
+    );
+    if (failed.length > 0) {
+      inconclusive.push(...failed);
+    } else if (
+      named.length > 0 &&
+      named.every((job) => job.status === "completed")
+    ) {
+      concluded.push(...named);
+    } else {
+      missing.push(name);
+    }
+  }
+
+  // One failed Job settles it, the rest cannot change the outcome.
+  if (inconclusive.length > 0) {
+    for (const job of inconclusive) {
+      core.error(
+        `Job ${job.name} has failed with conclusion: ${String(job.conclusion)}`,
+      );
+    }
+    return {
+      done: true,
+      value: { success: false, reason: "inconclusive", value: inconclusive },
+    };
+  }
+
+  if (missing.length === 0) {
+    return { done: true, value: { success: true, value: concluded } };
+  }
+
+  if (runCompleted) {
+    const observed = jobs.map((job) => job.name);
+    core.error(
+      `Run concluded without the awaited Jobs completing:\n` +
+        `  Awaited: [${missing.join(", ")}]\n` +
+        `  Jobs in run: [${observed.join(", ")}]`,
+    );
+    return {
+      done: true,
+      value: {
+        success: false,
+        reason: "missing",
+        value: { missing, observed },
+      },
+    };
+  }
+
+  return POLL_PENDING;
+}
+
+/**
+ * Await named Jobs within the run rather than the run itself, resolving once
+ * each has succeeded and leaving the rest of the run in flight.
+ *
+ * A Job concluding otherwise fails the result, cancelling the run where
+ * cancellation is configured.
+ */
+export async function getWorkflowRunJobsResult(
+  opts: RunOpts & { jobs: string[] },
+): Promise<JobsResult> {
+  // The Jobs listing can briefly lag a freshly completed run, so a `missing`
+  // verdict needs completion to hold for two polls before it is terminal.
+  let runCompletedLastPoll = false;
+  const result = await pollRun(opts, async (attemptNo) => {
+    const statesResult = await retryOnError(
+      async () =>
+        Promise.all([
+          fetchWorkflowRunState(opts.runId),
+          fetchWorkflowRunJobStates(opts.runId),
+        ]),
+      400,
+      "fetchWorkflowRunState & fetchWorkflowRunJobStates",
+    );
+    if (!statesResult.success) {
+      core.debug(`Failed to fetch run state and Jobs, attempt ${attemptNo}...`);
+      return POLL_PENDING;
+    }
+
+    const [runState, jobs] = statesResult.value;
+    const runCompleted = runState.status === WorkflowRunStatus.Completed;
+    const completionConfirmed = runCompleted && runCompletedLastPoll;
+    runCompletedLastPoll = runCompleted;
+
+    return getWorkflowRunJobsStateResult(opts.jobs, jobs, completionConfirmed);
+  });
+
+  // A failed Job means the run can no longer succeed, so give up on it too
+  // where cancellation was opted into.
+  if (
+    !result.success &&
+    result.reason === "inconclusive" &&
+    opts.cancelTimeoutMs !== undefined
+  ) {
+    core.warning(
+      `Awaited Jobs have concluded unsuccessfully, requesting cancellation of Workflow Run ${opts.runId}`,
+    );
+    await requestWorkflowRunCancel(opts.runId);
+  }
+
+  return result;
 }

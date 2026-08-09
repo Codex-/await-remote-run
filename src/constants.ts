@@ -24,7 +24,12 @@ export const WORKFLOW_RUN_ACTIVE_JOB_POLL_INTERVAL_MS: number = 1_000;
 /**
  * How many response bodies to retain for conditional requests.
  *
- * The action only polls a couple of distinct URLs, so this sits well above
- * what a run needs and exists to bound memory should that ever change.
+ * Each Job page is a distinct URL, so this sits well above the pages a run
+ * realistically produces and exists to bound memory.
  */
 export const ETAG_CACHE_MAX_ENTRIES: number = 16;
+
+/**
+ * How many Jobs to request per page, the API maximum.
+ */
+export const JOBS_PER_PAGE: number = 100;

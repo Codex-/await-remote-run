@@ -60,6 +60,9 @@ describe("main", () => {
   let awaitRemoteRunGetWorkflowRunResult: MockInstance<
     typeof awaitRemoteRun.getWorkflowRunResult
   >;
+  let awaitRemoteRunGetWorkflowRunJobsResult: MockInstance<
+    typeof awaitRemoteRun.getWorkflowRunJobsResult
+  >;
 
   afterAll(() => {
     vi.restoreAllMocks();
@@ -87,6 +90,10 @@ describe("main", () => {
     awaitRemoteRunGetWorkflowRunResult = vi.spyOn(
       awaitRemoteRun,
       "getWorkflowRunResult",
+    );
+    awaitRemoteRunGetWorkflowRunJobsResult = vi.spyOn(
+      awaitRemoteRun,
+      "getWorkflowRunJobsResult",
     );
   });
 
@@ -184,6 +191,142 @@ describe("main", () => {
 
     // Logging
     assertOnlyCalled(coreInfoLogMock);
+  });
+
+  describe("awaiting specific jobs", () => {
+    const jobsCfg: action.ActionConfig = { ...testCfg, jobs: ["build"] };
+    const succeeded = {
+      name: "build",
+      status: "completed" as const,
+      conclusion: "success" as const,
+    };
+
+    beforeEach(() => {
+      actionGetConfigMock.mockReturnValue(jobsCfg);
+      apiFetchWorkflowRunActiveJobUrlRetry.mockResolvedValue({
+        success: true,
+        value: "test-url",
+      });
+    });
+
+    it("should await the named jobs rather than the run", async () => {
+      awaitRemoteRunGetWorkflowRunJobsResult.mockResolvedValue({
+        success: true,
+        value: [succeeded],
+      });
+
+      await main();
+
+      // Behaviour
+      expect(awaitRemoteRunGetWorkflowRunJobsResult).toHaveBeenCalledOnce();
+      expect(awaitRemoteRunGetWorkflowRunJobsResult).toHaveBeenCalledWith({
+        startTime: Date.now(),
+        pollIntervalMs: jobsCfg.pollIntervalMs,
+        runId: jobsCfg.runId,
+        runTimeoutMs: jobsCfg.runTimeoutSeconds * 1000,
+        cancelTimeoutMs: undefined,
+        jobs: ["build"],
+      });
+      expect(awaitRemoteRunGetWorkflowRunResult).not.toHaveBeenCalled();
+
+      // Result
+      expect(coreSetFailedMock).not.toHaveBeenCalled();
+      expect(awaitRemoteRunHandleActionFail).not.toHaveBeenCalled();
+
+      // Logging
+      assertOnlyCalled(coreInfoLogMock);
+      expect(coreInfoLogMock).toHaveBeenCalledTimes(2);
+      expect(coreInfoLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(`
+        "Awaiting completion of Jobs [build] in Workflow Run 123456...
+          ID: 123456
+          URL: test-url"
+      `);
+      expect(coreInfoLogMock.mock.calls[1]?.[0]).toMatchInlineSnapshot(`
+        "Awaited Jobs Completed:
+          Run ID: 123456
+          Jobs: [build]"
+      `);
+    });
+
+    it("should fail when a named job concludes unsuccessfully", async () => {
+      awaitRemoteRunGetWorkflowRunJobsResult.mockResolvedValue({
+        success: false,
+        reason: "inconclusive",
+        value: [{ ...succeeded, conclusion: "failure" }],
+      });
+
+      await main();
+
+      // Behaviour
+      expect(awaitRemoteRunHandleActionFail).toHaveBeenCalledOnce();
+      expect(awaitRemoteRunHandleActionFail).toHaveBeenCalledWith(
+        "Awaited Jobs have concluded unsuccessfully: build (failure)",
+        jobsCfg.runId,
+      );
+
+      // Logging
+      assertOnlyCalled(coreInfoLogMock);
+    });
+
+    it("should fail when the run concludes without a named job", async () => {
+      awaitRemoteRunGetWorkflowRunJobsResult.mockResolvedValue({
+        success: false,
+        reason: "missing",
+        value: { missing: ["build"], observed: ["biuld"] },
+      });
+
+      await main();
+
+      // Behaviour
+      expect(awaitRemoteRunHandleActionFail).toHaveBeenCalledOnce();
+      expect(awaitRemoteRunHandleActionFail).toHaveBeenCalledWith(
+        "Run concluded without the awaited Jobs completing: build",
+        jobsCfg.runId,
+      );
+
+      // Logging
+      assertOnlyCalled(coreInfoLogMock);
+    });
+
+    it("should fail on a timeout", async () => {
+      awaitRemoteRunGetWorkflowRunJobsResult.mockResolvedValue({
+        success: false,
+        reason: "timeout",
+      });
+
+      await main();
+
+      // Behaviour
+      expect(awaitRemoteRunHandleActionFail).toHaveBeenCalledOnce();
+      expect(awaitRemoteRunHandleActionFail).toHaveBeenCalledWith(
+        "Timeout exceeded while attempting to await the Jobs concluding (0ms)",
+        jobsCfg.runId,
+      );
+
+      // Logging
+      assertOnlyCalled(coreInfoLogMock);
+    });
+
+    it("should pass the cancel timeout through when configured", async () => {
+      actionGetConfigMock.mockReturnValue({
+        ...jobsCfg,
+        cancelTimeoutSeconds: 120,
+      });
+      awaitRemoteRunGetWorkflowRunJobsResult.mockResolvedValue({
+        success: true,
+        value: [succeeded],
+      });
+
+      await main();
+
+      // Behaviour
+      expect(awaitRemoteRunGetWorkflowRunJobsResult).toHaveBeenCalledWith(
+        expect.objectContaining({ cancelTimeoutMs: 120_000 }),
+      );
+
+      // Logging
+      assertOnlyCalled(coreInfoLogMock);
+    });
   });
 
   it("should warn and continue if the active job URL fetch times out", async () => {

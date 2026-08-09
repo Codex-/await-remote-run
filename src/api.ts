@@ -217,39 +217,64 @@ type ListJobsForWorkflowRunResponse = Awaited<
   ReturnType<Octokit["rest"]["actions"]["listJobsForWorkflowRun"]>
 >;
 
-async function fetchWorkflowRunJobs(
+type ListedJob = ListJobsForWorkflowRunResponse["data"]["jobs"][number];
+
+/**
+ * Fetch every Job the run has created.
+ *
+ * Costs a request per `JOBS_PER_PAGE` Jobs, so prefer
+ * `fetchWorkflowRunJobsFirstPage` where any one Job will do.
+ */
+async function fetchWorkflowRunJobs(runId: number): Promise<ListedJob[]> {
+  // https://docs.github.com/en/rest/actions/workflow-jobs#list-jobs-for-a-workflow-run
+  return octokit.paginate(octokit.rest.actions.listJobsForWorkflowRun, {
+    owner: config.owner,
+    repo: config.repo,
+    run_id: runId,
+    filter: "latest",
+    per_page: constants.JOBS_PER_PAGE,
+  });
+}
+
+/**
+ * Fetch the first page of the run's Jobs.
+ *
+ * Jobs are listed oldest first, so the earliest to start are here.
+ */
+async function fetchWorkflowRunJobsFirstPage(
   runId: number,
-): Promise<ListJobsForWorkflowRunResponse> {
+): Promise<ListedJob[]> {
   // https://docs.github.com/en/rest/actions/workflow-jobs#list-jobs-for-a-workflow-run
   const response = await octokit.rest.actions.listJobsForWorkflowRun({
     owner: config.owner,
     repo: config.repo,
     run_id: runId,
     filter: "latest",
+    per_page: constants.JOBS_PER_PAGE,
   });
 
-  // A non-200 is possible, the types aren't the best
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-  if (response.status !== 200) {
-    throw new Error(
-      `Failed to fetch Jobs for Workflow Run, expected 200 but received ${response.status}`,
-    );
-  }
-
-  return response;
+  return response.data.jobs;
 }
 
+/**
+ * Fetch the run's Jobs that concluded unsuccessfully, for failure diagnostics.
+ *
+ * Skipped Jobs are excluded, as they carry no diagnostic detail and would bury
+ * the causal failure.
+ */
 export async function fetchWorkflowRunFailedJobs(
   runId: number,
 ): Promise<WorkflowRunJob[]> {
   try {
-    const response = await fetchWorkflowRunJobs(runId);
-    const fetchedFailedJobs = response.data.jobs.filter(
-      (job) => job.conclusion === "failure",
+    const fetchedFailedJobs = (await fetchWorkflowRunJobs(runId)).filter(
+      (job) =>
+        job.status === "completed" &&
+        job.conclusion !== "success" &&
+        job.conclusion !== "skipped",
     );
 
     if (fetchedFailedJobs.length <= 0) {
-      core.warning(`Failed to find failed Jobs for Workflow Run ${runId}`);
+      core.info(`Found no unsuccessful Jobs for Workflow Run ${runId}`);
       return [];
     }
 
@@ -302,12 +327,57 @@ export async function fetchWorkflowRunFailedJobs(
   }
 }
 
+export interface WorkflowRunJobState {
+  name: string;
+  status: ListedJob["status"];
+  conclusion: ListedJob["conclusion"];
+}
+
+/**
+ * Fetch the state of every Job the run has created so far.
+ *
+ * Jobs appear as they become eligible, so one blocked on `needs` is absent
+ * rather than pending.
+ */
+export async function fetchWorkflowRunJobStates(
+  runId: number,
+): Promise<WorkflowRunJobState[]> {
+  try {
+    const jobs = (await fetchWorkflowRunJobs(runId)).map((job) => ({
+      name: job.name,
+      status: job.status,
+      conclusion: job.conclusion,
+    }));
+
+    const jobStates = jobs.map(
+      (job) => `${job.name} (${job.status}, ${job.conclusion})`,
+    );
+    core.debug(
+      `Fetched Job states for Run:\n` +
+        `  Repository: ${config.owner}/${config.repo}\n` +
+        `  Run ID: ${runId}\n` +
+        `  Jobs: [${jobStates.join(", ")}]`,
+    );
+
+    return jobs;
+  } catch (error) {
+    if (error instanceof Error) {
+      core.error(
+        `fetchWorkflowRunJobStates: An unexpected error has occurred: ${error.message}`,
+      );
+      core.debug(error.stack ?? "");
+    }
+    throw error;
+  }
+}
+
 export async function fetchWorkflowRunActiveJobUrl(
   runId: number,
 ): Promise<string | undefined> {
   try {
-    const response = await fetchWorkflowRunJobs(runId);
-    const fetchedInProgressJobs = response.data.jobs.filter(
+    const fetchedInProgressJobs = (
+      await fetchWorkflowRunJobsFirstPage(runId)
+    ).filter(
       (job) => job.status === "in_progress" || job.status === "completed",
     );
 
