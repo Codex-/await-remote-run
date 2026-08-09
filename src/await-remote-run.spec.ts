@@ -1100,6 +1100,53 @@ describe("await-remote-run", () => {
         assertNoneCalled();
       });
 
+      it.each([
+        { cancelTimeoutMs: 300, cancelRequests: 1, label: "cancels the run" },
+        {
+          cancelTimeoutMs: undefined,
+          cancelRequests: 0,
+          label: "leaves the run in flight",
+        },
+      ])(
+        "$label once an awaited Job fails with cancel_timeout_seconds $cancelTimeoutMs",
+        async ({ cancelTimeoutMs, cancelRequests }) => {
+          apiRequestWorkflowRunCancelMock.mockResolvedValue({ success: true });
+          apiFetchWorkflowRunJobStatesMock.mockResolvedValue([
+            { name: "build", status: "completed", conclusion: "failure" },
+          ]);
+
+          // Behaviour
+          const resultPromise = getWorkflowRunJobsResult({
+            startTime: Date.now(),
+            pollIntervalMs: pollIntervalMs,
+            runId: 0,
+            runTimeoutMs: runTimeoutMs,
+            cancelTimeoutMs: cancelTimeoutMs,
+            jobs: ["build"],
+          });
+          await vi.advanceTimersByTimeAsync(runTimeoutMs);
+
+          expect(await resultPromise).toMatchObject({
+            success: false,
+            reason: "inconclusive",
+          });
+          expect(apiRequestWorkflowRunCancelMock).toHaveBeenCalledTimes(
+            cancelRequests,
+          );
+
+          // Logging
+          if (cancelRequests > 0) {
+            assertOnlyCalled(coreErrorLogMock, coreWarningLogMock);
+            expect(coreWarningLogMock).toHaveBeenCalledOnce();
+            expect(coreWarningLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
+              `"Awaited Jobs have concluded unsuccessfully, requesting cancellation of Workflow Run 0"`,
+            );
+          } else {
+            assertOnlyCalled(coreErrorLogMock);
+          }
+        },
+      );
+
       it("times out while the awaited Job never completes", async () => {
         apiRequestWorkflowRunCancelMock.mockResolvedValue({ success: true });
         apiFetchWorkflowRunJobStatesMock.mockResolvedValue([

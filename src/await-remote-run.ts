@@ -308,6 +308,9 @@ export function getWorkflowRunJobsStateResult(
 /**
  * Await named Jobs within the run rather than the run itself, resolving once
  * each has succeeded and leaving the rest of the run in flight.
+ *
+ * A Job concluding otherwise fails the result, cancelling the run where
+ * cancellation is configured.
  */
 export async function getWorkflowRunJobsResult(
   opts: RunOpts & { jobs: string[] },
@@ -315,7 +318,7 @@ export async function getWorkflowRunJobsResult(
   // The Jobs listing can briefly lag a freshly completed run, so a `missing`
   // verdict needs completion to hold for two polls before it is terminal.
   let runCompletedLastPoll = false;
-  return pollRun(opts, async (attemptNo) => {
+  const result = await pollRun(opts, async (attemptNo) => {
     const statesResult = await retryOnError(
       async () =>
         Promise.all([
@@ -337,4 +340,19 @@ export async function getWorkflowRunJobsResult(
 
     return getWorkflowRunJobsStateResult(opts.jobs, jobs, completionConfirmed);
   });
+
+  // A failed Job means the run can no longer succeed, so give up on it too
+  // where cancellation was opted into.
+  if (
+    !result.success &&
+    result.reason === "inconclusive" &&
+    opts.cancelTimeoutMs !== undefined
+  ) {
+    core.warning(
+      `Awaited Jobs have concluded unsuccessfully, requesting cancellation of Workflow Run ${opts.runId}`,
+    );
+    await requestWorkflowRunCancel(opts.runId);
+  }
+
+  return result;
 }

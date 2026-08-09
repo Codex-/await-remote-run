@@ -82,8 +82,9 @@ awaiting `build` while its `deploy` continues.
 
 The action resolves once every listed job has concluded with `success`, leaving the rest
 of the run in flight. Any other conclusion, `skipped` included, fails the action
-immediately without awaiting the remaining jobs. `cancel_timeout_seconds` still applies
-to the timeout, but a run whose awaited jobs concluded is never cancelled.
+immediately without awaiting the remaining jobs. With `cancel_timeout_seconds` set, this
+failure also requests cancellation of the run, which can no longer succeed. A run whose
+awaited jobs all succeeded is never cancelled.
 
 #### Matching job names
 
