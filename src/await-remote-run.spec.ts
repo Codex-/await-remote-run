@@ -337,6 +337,39 @@ describe("await-remote-run", () => {
       assertNoneCalled();
     });
 
+    describe("duplicate Job names", () => {
+      it("should not let a success mask a same-named failure", () => {
+        const failed = job("build", "completed", "failure");
+
+        // Behaviour
+        const result = getWorkflowRunJobsStateResult(
+          ["build"],
+          [build, failed],
+          false,
+        );
+        expect(result).toStrictEqual({
+          done: true,
+          value: { success: false, reason: "inconclusive", value: [failed] },
+        });
+
+        // Logging
+        assertOnlyCalled(coreErrorLogMock);
+      });
+
+      it("should await every Job bearing an awaited name", () => {
+        // Behaviour
+        const result = getWorkflowRunJobsStateResult(
+          ["build"],
+          [build, job("build", "in_progress")],
+          false,
+        );
+        expect(result).toStrictEqual({ done: false });
+
+        // Logging
+        assertNoneCalled();
+      });
+    });
+
     it("should fail once the run concludes without an awaited Job", () => {
       // Behaviour
       const result = getWorkflowRunJobsStateResult(

@@ -246,25 +246,36 @@ export type JobsResult = WorkflowRunJobsResult<WorkflowRunJobState>;
  *
  * A Job absent from `jobs` is only terminal once the run has completed, as
  * until then it may still be created.
+ *
+ * GitHub permits Jobs to share a name, so an awaited name covers every Job
+ * bearing it.
  */
 export function getWorkflowRunJobsStateResult(
   awaited: string[],
   jobs: WorkflowRunJobState[],
   runCompleted: boolean,
 ): PollAttempt<JobsResult> {
-  const byName = new Map(jobs.map((job) => [job.name, job]));
+  const byName = Map.groupBy(jobs, (job) => job.name);
   const concluded: WorkflowRunJobState[] = [];
   const inconclusive: WorkflowRunJobState[] = [];
   const missing: string[] = [];
 
   for (const name of awaited) {
-    const job = byName.get(name);
-    if (job?.status !== "completed") {
-      missing.push(name);
-    } else if (job.conclusion === WorkflowRunConclusion.Success) {
-      concluded.push(job);
+    const named = byName.get(name) ?? [];
+    const failed = named.filter(
+      (job) =>
+        job.status === "completed" &&
+        job.conclusion !== WorkflowRunConclusion.Success,
+    );
+    if (failed.length > 0) {
+      inconclusive.push(...failed);
+    } else if (
+      named.length > 0 &&
+      named.every((job) => job.status === "completed")
+    ) {
+      concluded.push(...named);
     } else {
-      inconclusive.push(job);
+      missing.push(name);
     }
   }
 
