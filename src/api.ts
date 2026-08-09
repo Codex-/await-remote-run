@@ -318,6 +318,50 @@ export async function fetchWorkflowRunFailedJobs(
   }
 }
 
+export interface WorkflowRunJobState {
+  name: string;
+  status: ListedJob["status"];
+  conclusion: ListedJob["conclusion"];
+}
+
+/**
+ * Fetch the state of every Job the run has created so far.
+ *
+ * Jobs appear as they become eligible, so one blocked on `needs` is absent
+ * rather than pending.
+ */
+export async function fetchWorkflowRunJobStates(
+  runId: number,
+): Promise<WorkflowRunJobState[]> {
+  try {
+    const jobs = (await fetchWorkflowRunJobs(runId)).map((job) => ({
+      name: job.name,
+      status: job.status,
+      conclusion: job.conclusion,
+    }));
+
+    const jobStates = jobs.map(
+      (job) => `${job.name} (${job.status}, ${job.conclusion})`,
+    );
+    core.debug(
+      `Fetched Job states for Run:\n` +
+        `  Repository: ${config.owner}/${config.repo}\n` +
+        `  Run ID: ${runId}\n` +
+        `  Jobs: [${jobStates.join(", ")}]`,
+    );
+
+    return jobs;
+  } catch (error) {
+    if (error instanceof Error) {
+      core.error(
+        `fetchWorkflowRunJobStates: An unexpected error has occurred: ${error.message}`,
+      );
+      core.debug(error.stack ?? "");
+    }
+    throw error;
+  }
+}
+
 export async function fetchWorkflowRunActiveJobUrl(
   runId: number,
 ): Promise<string | undefined> {

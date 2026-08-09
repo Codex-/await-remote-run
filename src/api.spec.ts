@@ -14,6 +14,7 @@ import {
   fetchWorkflowRunActiveJobUrl,
   fetchWorkflowRunActiveJobUrlRetry,
   fetchWorkflowRunFailedJobs,
+  fetchWorkflowRunJobStates,
   fetchWorkflowRunState,
   init,
   requestWorkflowRunCancel,
@@ -424,6 +425,116 @@ describe("API", () => {
 
         // Logging
         assertOnlyCalled(coreDebugLogMock);
+      });
+    });
+
+    describe("fetchWorkflowRunJobStates", () => {
+      it("should return the name, status, and conclusion of every job", async () => {
+        vi.spyOn(
+          mockOctokit.rest.actions,
+          "listJobsForWorkflowRun",
+        ).mockReturnValue(
+          Promise.resolve({
+            data: {
+              total_count: 2,
+              jobs: [
+                {
+                  id: 0,
+                  html_url: null,
+                  status: "completed",
+                  conclusion: "success",
+                  name: "build",
+                  steps: [],
+                },
+                {
+                  id: 1,
+                  html_url: null,
+                  status: "in_progress",
+                  conclusion: null,
+                  name: "deploy",
+                  steps: [],
+                },
+              ],
+            },
+            status: 200,
+            headers: {},
+          }),
+        );
+
+        // Behaviour
+        const jobs = await fetchWorkflowRunJobStates(123456);
+        expect(jobs).toStrictEqual([
+          { name: "build", status: "completed", conclusion: "success" },
+          { name: "deploy", status: "in_progress", conclusion: null },
+        ]);
+
+        // Logging
+        assertOnlyCalled(coreDebugLogMock);
+        expect(coreDebugLogMock).toHaveBeenCalledOnce();
+        expect(coreDebugLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(`
+          "Fetched Job states for Run:
+            Repository: owner/repository
+            Run ID: 123456
+            Jobs: [build (completed, success), deploy (in_progress, null)]"
+        `);
+      });
+
+      it("should page the listing, as a name can match any job in the run", async () => {
+        const paginateMock = vi.spyOn(mockOctokit, "paginate");
+        vi.spyOn(
+          mockOctokit.rest.actions,
+          "listJobsForWorkflowRun",
+        ).mockReturnValue(
+          Promise.resolve({ data: mockData, status: 200, headers: {} }),
+        );
+
+        // Behaviour
+        await fetchWorkflowRunJobStates(123456);
+        expect(paginateMock).toHaveBeenCalledOnce();
+
+        // Logging
+        assertOnlyCalled(coreDebugLogMock);
+      });
+
+      it("should return no jobs for a run yet to create any", async () => {
+        vi.spyOn(
+          mockOctokit.rest.actions,
+          "listJobsForWorkflowRun",
+        ).mockReturnValue(
+          Promise.resolve({
+            data: { total_count: 0, jobs: [] },
+            status: 200,
+            headers: {},
+          }),
+        );
+
+        // Behaviour
+        // An empty list is an ordinary early state, not a failure.
+        await expect(fetchWorkflowRunJobStates(123456)).resolves.toStrictEqual(
+          [],
+        );
+
+        // Logging
+        assertOnlyCalled(coreDebugLogMock);
+      });
+
+      it("should log and rethrow a failed request", async () => {
+        vi.spyOn(
+          mockOctokit.rest.actions,
+          "listJobsForWorkflowRun",
+        ).mockRejectedValue(mockHttpError("Bad credentials", 401));
+
+        // Behaviour
+        await expect(fetchWorkflowRunJobStates(0)).rejects.toThrow(
+          "Bad credentials",
+        );
+
+        // Logging
+        assertOnlyCalled(coreErrorLogMock, coreDebugLogMock);
+        expect(coreErrorLogMock).toHaveBeenCalledOnce();
+        expect(coreErrorLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
+          `"fetchWorkflowRunJobStates: An unexpected error has occurred: Bad credentials"`,
+        );
       });
     });
 
