@@ -32,6 +32,18 @@ interface MockResponse {
 }
 
 const mockOctokit = {
+  /**
+   * Stands in for the paginate plugin, flattening the mocked page. Walking the
+   * `Link` header is Octokit's contract to keep, not ours to test.
+   */
+  paginate: async (
+    endpoint: (req?: any) => Promise<MockResponse>,
+    params?: any,
+  ): Promise<unknown[]> => {
+    const response = await endpoint(params);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+    return response.data.jobs;
+  },
   rest: {
     actions: {
       getWorkflowRun: (_req?: any): Promise<MockResponse> => {
@@ -367,6 +379,54 @@ describe("API", () => {
       ],
     };
 
+    describe("pagination", () => {
+      it("should page the listing at the maximum size", async () => {
+        const paginateMock = vi.spyOn(mockOctokit, "paginate");
+        vi.spyOn(
+          mockOctokit.rest.actions,
+          "listJobsForWorkflowRun",
+        ).mockReturnValue(
+          Promise.resolve({ data: mockData, status: 200, headers: {} }),
+        );
+
+        // Behaviour
+        // A single default-sized page would discard every Job past the 30th.
+        await fetchWorkflowRunFailedJobs(123456);
+
+        expect(paginateMock).toHaveBeenCalledOnce();
+        expect(paginateMock.mock.lastCall?.[0]).toBe(
+          mockOctokit.rest.actions.listJobsForWorkflowRun,
+        );
+        expect(paginateMock.mock.lastCall?.[1]).toMatchObject({
+          run_id: 123456,
+          filter: "latest",
+          per_page: constants.JOBS_PER_PAGE,
+        });
+
+        // Logging
+        assertOnlyCalled(coreDebugLogMock);
+      });
+
+      it("should not page the listing to resolve the active Job URL", async () => {
+        const paginateMock = vi.spyOn(mockOctokit, "paginate");
+        const listJobsMock = vi
+          .spyOn(mockOctokit.rest.actions, "listJobsForWorkflowRun")
+          .mockReturnValue(
+            Promise.resolve({ data: mockData, status: 200, headers: {} }),
+          );
+
+        // Behaviour
+        // Polled every second while the run starts, for a single Job.
+        await fetchWorkflowRunActiveJobUrl(123456);
+
+        expect(listJobsMock).toHaveBeenCalledOnce();
+        expect(paginateMock).not.toHaveBeenCalled();
+
+        // Logging
+        assertOnlyCalled(coreDebugLogMock);
+      });
+    });
+
     describe("fetchWorkflowRunFailedJobs", () => {
       it("should return the jobs for a failed workflow run given a run ID", async () => {
         vi.spyOn(
@@ -430,29 +490,22 @@ describe("API", () => {
         );
       });
 
-      it("should throw if a non-200 status is returned", async () => {
-        const errorStatus = 401;
+      it("should log and rethrow a failed request", async () => {
         vi.spyOn(
           mockOctokit.rest.actions,
           "listJobsForWorkflowRun",
-        ).mockReturnValue(
-          Promise.resolve({
-            data: undefined,
-            status: errorStatus,
-            headers: {},
-          }),
-        );
+        ).mockRejectedValue(mockHttpError("Bad credentials", 401));
 
         // Behaviour
         await expect(fetchWorkflowRunFailedJobs(0)).rejects.toThrow(
-          `Failed to fetch Jobs for Workflow Run, expected 200 but received ${errorStatus}`,
+          "Bad credentials",
         );
 
         // Logging
         assertOnlyCalled(coreErrorLogMock, coreDebugLogMock);
         expect(coreErrorLogMock).toHaveBeenCalledOnce();
         expect(coreErrorLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
-          `"fetchWorkflowRunFailedJobs: An unexpected error has occurred: Failed to fetch Jobs for Workflow Run, expected 200 but received 401"`,
+          `"fetchWorkflowRunFailedJobs: An unexpected error has occurred: Bad credentials"`,
         );
         expect(coreDebugLogMock).toHaveBeenCalledOnce();
       });
@@ -554,29 +607,22 @@ describe("API", () => {
         `);
       });
 
-      it("should throw if a non-200 status is returned", async () => {
-        const errorStatus = 401;
+      it("should log and rethrow a failed request", async () => {
         vi.spyOn(
           mockOctokit.rest.actions,
           "listJobsForWorkflowRun",
-        ).mockReturnValue(
-          Promise.resolve({
-            data: undefined,
-            status: errorStatus,
-            headers: {},
-          }),
-        );
+        ).mockRejectedValue(mockHttpError("Bad credentials", 401));
 
         // Behaviour
         await expect(fetchWorkflowRunActiveJobUrl(0)).rejects.toThrow(
-          `Failed to fetch Jobs for Workflow Run, expected 200 but received ${errorStatus}`,
+          "Bad credentials",
         );
 
         // Logging
         assertOnlyCalled(coreErrorLogMock, coreDebugLogMock);
         expect(coreErrorLogMock).toHaveBeenCalledOnce();
         expect(coreErrorLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
-          `"fetchWorkflowRunActiveJobUrl: An unexpected error has occurred: Failed to fetch Jobs for Workflow Run, expected 200 but received 401"`,
+          `"fetchWorkflowRunActiveJobUrl: An unexpected error has occurred: Bad credentials"`,
         );
         expect(coreDebugLogMock).toHaveBeenCalledOnce();
       });

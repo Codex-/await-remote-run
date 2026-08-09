@@ -217,34 +217,50 @@ type ListJobsForWorkflowRunResponse = Awaited<
   ReturnType<Octokit["rest"]["actions"]["listJobsForWorkflowRun"]>
 >;
 
-async function fetchWorkflowRunJobs(
+type ListedJob = ListJobsForWorkflowRunResponse["data"]["jobs"][number];
+
+/**
+ * Fetch every Job the run has created.
+ *
+ * Costs a request per `JOBS_PER_PAGE` Jobs, so prefer
+ * `fetchWorkflowRunJobsFirstPage` where any one Job will do.
+ */
+async function fetchWorkflowRunJobs(runId: number): Promise<ListedJob[]> {
+  // https://docs.github.com/en/rest/actions/workflow-jobs#list-jobs-for-a-workflow-run
+  return octokit.paginate(octokit.rest.actions.listJobsForWorkflowRun, {
+    owner: config.owner,
+    repo: config.repo,
+    run_id: runId,
+    filter: "latest",
+    per_page: constants.JOBS_PER_PAGE,
+  });
+}
+
+/**
+ * Fetch the first page of the run's Jobs.
+ *
+ * Jobs are listed oldest first, so the earliest to start are here.
+ */
+async function fetchWorkflowRunJobsFirstPage(
   runId: number,
-): Promise<ListJobsForWorkflowRunResponse> {
+): Promise<ListedJob[]> {
   // https://docs.github.com/en/rest/actions/workflow-jobs#list-jobs-for-a-workflow-run
   const response = await octokit.rest.actions.listJobsForWorkflowRun({
     owner: config.owner,
     repo: config.repo,
     run_id: runId,
     filter: "latest",
+    per_page: constants.JOBS_PER_PAGE,
   });
 
-  // A non-200 is possible, the types aren't the best
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-  if (response.status !== 200) {
-    throw new Error(
-      `Failed to fetch Jobs for Workflow Run, expected 200 but received ${response.status}`,
-    );
-  }
-
-  return response;
+  return response.data.jobs;
 }
 
 export async function fetchWorkflowRunFailedJobs(
   runId: number,
 ): Promise<WorkflowRunJob[]> {
   try {
-    const response = await fetchWorkflowRunJobs(runId);
-    const fetchedFailedJobs = response.data.jobs.filter(
+    const fetchedFailedJobs = (await fetchWorkflowRunJobs(runId)).filter(
       (job) => job.conclusion === "failure",
     );
 
@@ -306,8 +322,9 @@ export async function fetchWorkflowRunActiveJobUrl(
   runId: number,
 ): Promise<string | undefined> {
   try {
-    const response = await fetchWorkflowRunJobs(runId);
-    const fetchedInProgressJobs = response.data.jobs.filter(
+    const fetchedInProgressJobs = (
+      await fetchWorkflowRunJobsFirstPage(runId)
+    ).filter(
       (job) => job.status === "in_progress" || job.status === "completed",
     );
 
