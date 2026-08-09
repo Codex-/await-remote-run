@@ -48,6 +48,17 @@ export type WorkflowRunResult = Result<{
   conclusion: WorkflowRunConclusion;
 }>;
 
+/**
+ * Whether a poll settled on a result, kept apart from the result itself so an
+ * absent or falsy `T` cannot read as unsettled.
+ */
+export type PollAttempt<T> = { done: true; value: T } | { done: false };
+
+/**
+ * Not settled, so polling continues.
+ */
+export const POLL_PENDING: PollAttempt<never> = { done: false };
+
 export type WorkflowRunStatusResult =
   | ResultSuccess<WorkflowRunStatus.Completed>
   | ResultStatusPending

@@ -7,8 +7,10 @@ import {
   retryOnError,
 } from "./api.ts";
 import {
+  POLL_PENDING,
   WorkflowRunConclusion,
   WorkflowRunStatus,
+  type PollAttempt,
   type WorkflowRunConclusionResult,
   type WorkflowRunResult,
   type WorkflowRunStatusResult,
@@ -112,44 +114,55 @@ export async function handleActionFail(
 }
 
 /**
- * The result a fetched state resolves to, or undefined while the run has yet to
+ * The result a fetched state settles on, or pending while the run has yet to
  * resolve and is worth polling for again.
  */
 function getWorkflowRunStateResult(
   status: WorkflowRunStatus | null,
   conclusion: WorkflowRunConclusion | null,
   attemptNo: number,
-): WorkflowRunResult | undefined {
+): PollAttempt<WorkflowRunResult> {
   const statusResult = getWorkflowRunStatusResult(status, attemptNo);
   if (!statusResult.success) {
     // An unsupported status may never resolve, unlike a pending one. Alert to
     // raise this so we can handle it properly.
-    return statusResult.reason === "unsupported" ? statusResult : undefined;
+    return statusResult.reason === "unsupported"
+      ? { done: true, value: statusResult }
+      : POLL_PENDING;
   }
 
   // We only get a conclusion should the status resolve, otherwise it is null.
   const conclusionResult = getWorkflowRunConclusionResult(conclusion);
   if (conclusionResult.success || conclusionResult.reason === "inconclusive") {
     return {
-      success: true,
+      done: true,
       value: {
-        status: statusResult.value,
-        conclusion: conclusionResult.value,
+        success: true,
+        value: {
+          status: statusResult.value,
+          conclusion: conclusionResult.value,
+        },
       },
     };
   }
 
   if (conclusionResult.reason === "timed_out") {
     return {
-      success: false,
-      reason: "timeout",
+      done: true,
+      value: {
+        success: false,
+        reason: "timeout",
+      },
     };
   }
 
   return {
-    success: false,
-    reason: "unsupported",
-    value: conclusionResult.value,
+    done: true,
+    value: {
+      success: false,
+      reason: "unsupported",
+      value: conclusionResult.value,
+    },
   };
 }
 
@@ -160,35 +173,23 @@ interface RunOpts {
   runTimeoutMs: number;
   cancelTimeoutMs?: number;
 }
-export async function getWorkflowRunResult({
-  startTime,
-  runId,
-  runTimeoutMs,
-  pollIntervalMs,
-  cancelTimeoutMs,
-}: RunOpts): Promise<WorkflowRunResult> {
+
+/**
+ * Poll the run until `attempt` settles on a result or the run timeout elapses,
+ * requesting cancellation on the way if one was configured.
+ */
+async function pollRun<T>(
+  { startTime, runId, runTimeoutMs, pollIntervalMs, cancelTimeoutMs }: RunOpts,
+  attempt: (attemptNo: number) => Promise<PollAttempt<T>>,
+): Promise<T | { success: false; reason: "timeout" }> {
   let attemptNo = 0;
   let cancelRequested = false;
   while (Date.now() - startTime < runTimeoutMs) {
     attemptNo++;
 
-    const fetchWorkflowRunStateResult = await retryOnError(
-      async () => fetchWorkflowRunState(runId),
-      400,
-      "fetchWorkflowRunState",
-    );
-    if (fetchWorkflowRunStateResult.success) {
-      const { status, conclusion } = fetchWorkflowRunStateResult.value;
-      const stateResult = getWorkflowRunStateResult(
-        status,
-        conclusion,
-        attemptNo,
-      );
-      if (stateResult !== undefined) {
-        return stateResult;
-      }
-    } else {
-      core.debug(`Failed to fetch run state, attempt ${attemptNo}...`);
+    const attempted = await attempt(attemptNo);
+    if (attempted.done) {
+      return attempted.value;
     }
 
     const elapsedTime = Date.now() - startTime;
@@ -214,4 +215,23 @@ export async function getWorkflowRunResult({
     success: false,
     reason: "timeout",
   };
+}
+
+export async function getWorkflowRunResult(
+  opts: RunOpts,
+): Promise<WorkflowRunResult> {
+  return pollRun(opts, async (attemptNo) => {
+    const fetchWorkflowRunStateResult = await retryOnError(
+      async () => fetchWorkflowRunState(opts.runId),
+      400,
+      "fetchWorkflowRunState",
+    );
+    if (!fetchWorkflowRunStateResult.success) {
+      core.debug(`Failed to fetch run state, attempt ${attemptNo}...`);
+      return POLL_PENDING;
+    }
+
+    const { status, conclusion } = fetchWorkflowRunStateResult.value;
+    return getWorkflowRunStateResult(status, conclusion, attemptNo);
+  });
 }
