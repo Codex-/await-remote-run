@@ -51,7 +51,7 @@ steps:
       owner: repository-owner
       workflow: automation-test.yml
   - name: Await Run ID ${{ steps.return_dispatch.outputs.run_id }}
-    uses: Codex-/await-remote-run@v2
+    uses: Codex-/await-remote-run@v3
     with:
       token: ${{ github.token }}
       repo: repository-name
@@ -70,7 +70,7 @@ awaiting `build` while its `deploy` continues.
 
 ```yaml
 - name: Await the remote build
-  uses: Codex-/await-remote-run@v2
+  uses: Codex-/await-remote-run@v3
   with:
     token: ${{ github.token }}
     repo: repository-name
@@ -111,7 +111,7 @@ Set `cancel_timeout_seconds` to request cancellation once that much time has ela
 
 ```yaml
 - name: Await Run ID ${{ steps.return_dispatch.outputs.run_id }}
-  uses: Codex-/await-remote-run@v2
+  uses: Codex-/await-remote-run@v3
   with:
     token: ${{ secrets.TOKEN }} # Cancelling is a write, so this cannot be GITHUB_TOKEN
     repo: repository-name
