@@ -256,16 +256,25 @@ async function fetchWorkflowRunJobsFirstPage(
   return response.data.jobs;
 }
 
+/**
+ * Fetch the run's Jobs that concluded unsuccessfully, for failure diagnostics.
+ *
+ * Skipped Jobs are excluded, as they carry no diagnostic detail and would bury
+ * the causal failure.
+ */
 export async function fetchWorkflowRunFailedJobs(
   runId: number,
 ): Promise<WorkflowRunJob[]> {
   try {
     const fetchedFailedJobs = (await fetchWorkflowRunJobs(runId)).filter(
-      (job) => job.conclusion === "failure",
+      (job) =>
+        job.status === "completed" &&
+        job.conclusion !== "success" &&
+        job.conclusion !== "skipped",
     );
 
     if (fetchedFailedJobs.length <= 0) {
-      core.warning(`Failed to find failed Jobs for Workflow Run ${runId}`);
+      core.info(`Found no unsuccessful Jobs for Workflow Run ${runId}`);
       return [];
     }
 

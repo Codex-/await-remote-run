@@ -574,7 +574,7 @@ describe("API", () => {
         `);
       });
 
-      it("should log a warning if no failed jobs are found", async () => {
+      it("should log info if no unsuccessful jobs are found", async () => {
         vi.spyOn(
           mockOctokit.rest.actions,
           "listJobsForWorkflowRun",
@@ -590,15 +590,48 @@ describe("API", () => {
         );
 
         // Behaviour
+        // Routine when the awaited Jobs concluded skipped or went missing.
         const jobs = await fetchWorkflowRunFailedJobs(123456);
         expect(jobs).toHaveLength(0);
 
         // Logging
-        assertOnlyCalled(coreWarningLogMock);
-        expect(coreWarningLogMock).toHaveBeenCalledOnce();
-        expect(coreWarningLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
-          `"Failed to find failed Jobs for Workflow Run 123456"`,
+        assertOnlyCalled(coreInfoLogMock);
+        expect(coreInfoLogMock).toHaveBeenCalledOnce();
+        expect(coreInfoLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
+          `"Found no unsuccessful Jobs for Workflow Run 123456"`,
         );
+      });
+
+      it("should return unsuccessful jobs beyond conclusion failure", async () => {
+        const job = (name: string, status: string, conclusion: string | null) =>
+          ({ ...mockData.jobs[0]!, name, status, conclusion }) as object;
+        vi.spyOn(
+          mockOctokit.rest.actions,
+          "listJobsForWorkflowRun",
+        ).mockReturnValue(
+          Promise.resolve({
+            headers: {},
+            data: {
+              total_count: 5,
+              jobs: [
+                job("build", "completed", "failure"),
+                job("test", "completed", "cancelled"),
+                // Excluded: no diagnostic detail, or yet to conclude.
+                job("lint", "completed", "skipped"),
+                job("succeeded", "completed", "success"),
+                job("deploy", "in_progress", null),
+              ],
+            },
+            status: 200,
+          }),
+        );
+
+        // Behaviour
+        const jobs = await fetchWorkflowRunFailedJobs(123456);
+        expect(jobs.map(({ name }) => name)).toStrictEqual(["build", "test"]);
+
+        // Logging
+        assertOnlyCalled(coreDebugLogMock);
       });
 
       it("should log and rethrow a failed request", async () => {
