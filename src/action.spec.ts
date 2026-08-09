@@ -22,6 +22,7 @@ describe("Action", () => {
         run_timeout_seconds: "300",
         cancel_timeout_seconds: "",
         poll_interval_ms: "2500",
+        jobs: "",
       };
 
       vi.spyOn(core, "getInput").mockImplementation((input: string) => {
@@ -41,6 +42,8 @@ describe("Action", () => {
             return mockEnvConfig.cancel_timeout_seconds;
           case "poll_interval_ms":
             return mockEnvConfig.poll_interval_ms;
+          case "jobs":
+            return mockEnvConfig.jobs;
           default:
             throw new Error("invalid input requested");
         }
@@ -64,9 +67,70 @@ describe("Action", () => {
       expect(config.runTimeoutSeconds).toStrictEqual(300);
       expect(config.cancelTimeoutSeconds).toBeUndefined();
       expect(config.pollIntervalMs).toStrictEqual(2500);
+      expect(config.jobs).toBeUndefined();
 
       // Logging
       assertNoneCalled();
+    });
+
+    describe("jobs", () => {
+      it("should split jobs on newlines", () => {
+        mockEnvConfig.jobs = "build\ntest\n";
+
+        // Behaviour
+        const config: ActionConfig = getConfig();
+        expect(config.jobs).toStrictEqual(["build", "test"]);
+
+        // Logging
+        assertNoneCalled();
+      });
+
+      it("should not split a matrix job name on its commas", () => {
+        mockEnvConfig.jobs = "build (ubuntu-latest, 20)";
+
+        // Behaviour
+        const config: ActionConfig = getConfig();
+        expect(config.jobs).toStrictEqual(["build (ubuntu-latest, 20)"]);
+
+        // Logging
+        assertNoneCalled();
+      });
+
+      it("should trim surrounding whitespace and drop blank entries", () => {
+        mockEnvConfig.jobs = "  build  \n\n   \n\ttest\t\n";
+
+        // Behaviour
+        const config: ActionConfig = getConfig();
+        expect(config.jobs).toStrictEqual(["build", "test"]);
+
+        // Logging
+        assertNoneCalled();
+      });
+
+      it("should discard duplicate job names", () => {
+        mockEnvConfig.jobs = "build\ntest\nbuild";
+
+        // Behaviour
+        const config: ActionConfig = getConfig();
+        expect(config.jobs).toStrictEqual(["build", "test"]);
+
+        // Logging
+        assertNoneCalled();
+      });
+
+      it.each([
+        { jobs: "", label: "an empty input" },
+        { jobs: "\n  \n", label: "only blanks" },
+      ])("should be undefined for $label", ({ jobs }) => {
+        mockEnvConfig.jobs = jobs;
+
+        // Behaviour
+        const config: ActionConfig = getConfig();
+        expect(config.jobs).toBeUndefined();
+
+        // Logging
+        assertNoneCalled();
+      });
     });
 
     it("should return cancel_timeout_seconds if one is supplied", () => {

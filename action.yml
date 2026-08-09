@@ -17,6 +17,11 @@ inputs:
   run_id:
     description: Run ID to await the completion of.
     required: true
+  jobs:
+    description: >-
+      Newline separated names of jobs within the run to await, instead of the
+      whole run. Names must match the job name GitHub reports, which includes
+      matrix parameters.
   run_timeout_seconds:
     description: Time until giving up on the run.
     default: 300

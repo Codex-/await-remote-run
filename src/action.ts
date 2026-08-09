@@ -47,6 +47,25 @@ export interface ActionConfig {
    * @default 2500
    */
   pollIntervalMs: number;
+
+  /**
+   * Names of Jobs to await, instead of the whole run.
+   *
+   * Matched against the name GitHub reports, not the workflow's job key.
+   *
+   * @example
+   * ```yaml
+   * jobs: |
+   *   build
+   *   test (ubuntu-latest, 20)
+   *   lint / eslint
+   * ```
+   * Parses to `["build", "test (ubuntu-latest, 20)", "lint / eslint"]`: a
+   * plain Job, a matrix Job, and a reusable workflow call.
+   *
+   * @default undefined
+   */
+  jobs?: string[];
 }
 
 export function getConfig(): ActionConfig {
@@ -82,7 +101,22 @@ export function getConfig(): ActionConfig {
     cancelTimeoutSeconds,
     pollIntervalMs:
       getNumberFromValue(core.getInput("poll_interval_ms")) ?? POLL_INTERVAL_MS,
+    jobs: getJobsFromValue(core.getInput("jobs")),
   };
+}
+
+/**
+ * Split on newlines only, as a matrix Job carries commas in its name.
+ */
+function getJobsFromValue(value: string): string[] | undefined {
+  const jobs = new Set(
+    value
+      .split("\n")
+      .map((job) => job.trim())
+      .filter((job) => job !== ""),
+  );
+
+  return jobs.size > 0 ? [...jobs] : undefined;
 }
 
 function getRunIdFromValue(value: string): number {
