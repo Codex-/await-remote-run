@@ -49,6 +49,32 @@ export type WorkflowRunResult = Result<{
 }>;
 
 /**
+ * The outcome of awaiting named Jobs, generic over the Job shape so this stays
+ * independent of the API layer.
+ */
+export type WorkflowRunJobsResult<TJob> =
+  | ResultSuccess<TJob[]>
+  | RequestTimeout
+  | ResultJobsInconclusive<TJob>
+  | ResultJobsMissing;
+
+interface ResultJobsInconclusive<TJob> {
+  success: false;
+  reason: "inconclusive";
+  value: TJob[];
+}
+
+/**
+ * The run concluded without an awaited Job completing, so it never will.
+ * `observed` is every Job the run did produce, to place a name that never matched.
+ */
+interface ResultJobsMissing {
+  success: false;
+  reason: "missing";
+  value: { missing: string[]; observed: string[] };
+}
+
+/**
  * Whether a poll settled on a result, kept apart from the result itself so an
  * absent or falsy `T` cannot read as unsettled.
  */

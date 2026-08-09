@@ -2,9 +2,11 @@ import * as core from "@actions/core";
 
 import {
   fetchWorkflowRunFailedJobs,
+  fetchWorkflowRunJobStates,
   fetchWorkflowRunState,
   requestWorkflowRunCancel,
   retryOnError,
+  type WorkflowRunJobState,
 } from "./api.ts";
 import {
   POLL_PENDING,
@@ -12,6 +14,7 @@ import {
   WorkflowRunStatus,
   type PollAttempt,
   type WorkflowRunConclusionResult,
+  type WorkflowRunJobsResult,
   type WorkflowRunResult,
   type WorkflowRunStatusResult,
 } from "./types.ts";
@@ -233,5 +236,102 @@ export async function getWorkflowRunResult(
 
     const { status, conclusion } = fetchWorkflowRunStateResult.value;
     return getWorkflowRunStateResult(status, conclusion, attemptNo);
+  });
+}
+
+type JobsResult = WorkflowRunJobsResult<WorkflowRunJobState>;
+
+/**
+ * The result the awaited Jobs settle on, or pending while they have yet to.
+ *
+ * A Job absent from `jobs` is only terminal once the run has completed, as
+ * until then it may still be created.
+ */
+export function getWorkflowRunJobsStateResult(
+  awaited: string[],
+  jobs: WorkflowRunJobState[],
+  runCompleted: boolean,
+): PollAttempt<JobsResult> {
+  const byName = new Map(jobs.map((job) => [job.name, job]));
+  const concluded: WorkflowRunJobState[] = [];
+  const inconclusive: WorkflowRunJobState[] = [];
+  const missing: string[] = [];
+
+  for (const name of awaited) {
+    const job = byName.get(name);
+    if (job?.status !== "completed") {
+      missing.push(name);
+    } else if (job.conclusion === WorkflowRunConclusion.Success) {
+      concluded.push(job);
+    } else {
+      inconclusive.push(job);
+    }
+  }
+
+  // One failed Job settles it, the rest cannot change the outcome.
+  if (inconclusive.length > 0) {
+    for (const job of inconclusive) {
+      core.error(
+        `Job ${job.name} has failed with conclusion: ${String(job.conclusion)}`,
+      );
+    }
+    return {
+      done: true,
+      value: { success: false, reason: "inconclusive", value: inconclusive },
+    };
+  }
+
+  if (missing.length === 0) {
+    return { done: true, value: { success: true, value: concluded } };
+  }
+
+  if (runCompleted) {
+    const observed = jobs.map((job) => job.name);
+    core.error(
+      `Run concluded without the awaited Jobs completing:\n` +
+        `  Awaited: [${missing.join(", ")}]\n` +
+        `  Jobs in run: [${observed.join(", ")}]`,
+    );
+    return {
+      done: true,
+      value: {
+        success: false,
+        reason: "missing",
+        value: { missing, observed },
+      },
+    };
+  }
+
+  return POLL_PENDING;
+}
+
+/**
+ * Await named Jobs within the run rather than the run itself, resolving once
+ * each has succeeded and leaving the rest of the run in flight.
+ */
+export async function getWorkflowRunJobsResult(
+  opts: RunOpts & { jobs: string[] },
+): Promise<JobsResult> {
+  return pollRun(opts, async (attemptNo) => {
+    const statesResult = await retryOnError(
+      async () =>
+        Promise.all([
+          fetchWorkflowRunState(opts.runId),
+          fetchWorkflowRunJobStates(opts.runId),
+        ]),
+      400,
+      "fetchWorkflowRunJobStates",
+    );
+    if (!statesResult.success) {
+      core.debug(`Failed to fetch run Jobs, attempt ${attemptNo}...`);
+      return POLL_PENDING;
+    }
+
+    const [runState, jobs] = statesResult.value;
+    return getWorkflowRunJobsStateResult(
+      opts.jobs,
+      jobs,
+      runState.status === WorkflowRunStatus.Completed,
+    );
   });
 }

@@ -11,8 +11,11 @@ import {
 } from "vitest";
 
 import * as api from "./api.ts";
+import type { WorkflowRunJobState } from "./api.ts";
 import {
   getWorkflowRunConclusionResult,
+  getWorkflowRunJobsResult,
+  getWorkflowRunJobsStateResult,
   getWorkflowRunResult,
   getWorkflowRunStatusResult,
   handleActionFail,
@@ -243,6 +246,137 @@ describe("await-remote-run", () => {
       expect(coreErrorLogMock.mock.lastCall?.[0]).toStrictEqual(
         `Run has failed with conclusion: ${conclusion}`,
       );
+    });
+  });
+
+  describe("getWorkflowRunJobsStateResult", () => {
+    function job(
+      name: string,
+      status: WorkflowRunJobState["status"],
+      conclusion: WorkflowRunJobState["conclusion"] = null,
+    ): WorkflowRunJobState {
+      return { name: name, status: status, conclusion: conclusion };
+    }
+
+    const build = job("build", "completed", "success");
+
+    it("should settle once every awaited Job has succeeded", () => {
+      const test = job("test", "completed", "success");
+
+      // Behaviour
+      const result = getWorkflowRunJobsStateResult(
+        ["build", "test"],
+        [build, test, job("deploy", "in_progress")],
+        false,
+      );
+      expect(result).toStrictEqual({
+        done: true,
+        value: { success: true, value: [build, test] },
+      });
+
+      // Logging
+      assertNoneCalled();
+    });
+
+    it.each(["failure", "cancelled", "skipped", "timed_out"] as const)(
+      "should fail on an awaited Job concluding %s",
+      (conclusion) => {
+        const failed = job("build", "completed", conclusion);
+
+        // Behaviour
+        const result = getWorkflowRunJobsStateResult(
+          ["build"],
+          [failed],
+          false,
+        );
+        expect(result).toStrictEqual({
+          done: true,
+          value: { success: false, reason: "inconclusive", value: [failed] },
+        });
+
+        // Logging
+        assertOnlyCalled(coreErrorLogMock);
+        expect(coreErrorLogMock).toHaveBeenCalledOnce();
+        expect(coreErrorLogMock.mock.lastCall?.[0]).toStrictEqual(
+          `Job build has failed with conclusion: ${conclusion}`,
+        );
+      },
+    );
+
+    it("should fail without waiting on the remaining awaited Jobs", () => {
+      // Behaviour
+      // `test` has yet to appear, but cannot rescue `build`.
+      const result = getWorkflowRunJobsStateResult(
+        ["build", "test"],
+        [job("build", "completed", "failure")],
+        false,
+      );
+      expect(result).toMatchObject({
+        done: true,
+        value: { reason: "inconclusive" },
+      });
+
+      // Logging
+      assertOnlyCalled(coreErrorLogMock);
+    });
+
+    it.each([
+      { label: "not yet appeared", pending: [] },
+      { label: "yet to complete", pending: [job("test", "in_progress")] },
+      { label: "queued", pending: [job("test", "queued")] },
+    ])("should keep polling while an awaited Job has $label", ({ pending }) => {
+      // Behaviour
+      const result = getWorkflowRunJobsStateResult(
+        ["build", "test"],
+        [build, ...pending],
+        false,
+      );
+      expect(result).toStrictEqual({ done: false });
+
+      // Logging
+      assertNoneCalled();
+    });
+
+    it("should fail once the run concludes without an awaited Job", () => {
+      // Behaviour
+      const result = getWorkflowRunJobsStateResult(
+        ["build", "tset"],
+        [build, job("test", "completed", "success")],
+        true,
+      );
+      expect(result).toStrictEqual({
+        done: true,
+        value: {
+          success: false,
+          reason: "missing",
+          value: { missing: ["tset"], observed: ["build", "test"] },
+        },
+      });
+
+      // Logging
+      assertOnlyCalled(coreErrorLogMock);
+      expect(coreErrorLogMock).toHaveBeenCalledOnce();
+      expect(coreErrorLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(`
+        "Run concluded without the awaited Jobs completing:
+          Awaited: [tset]
+          Jobs in run: [build, test]"
+      `);
+    });
+
+    it("should report a Job the run abandoned mid-flight as missing", () => {
+      // Behaviour
+      const result = getWorkflowRunJobsStateResult(
+        ["test"],
+        [job("test", "in_progress")],
+        true,
+      );
+      expect(result).toMatchObject({
+        done: true,
+        value: { reason: "missing", value: { missing: ["test"] } },
+      });
+
+      // Logging
+      assertOnlyCalled(coreErrorLogMock);
     });
   });
 
@@ -823,6 +957,171 @@ describe("await-remote-run", () => {
 
         // Logging
         assertNoneCalled();
+      });
+    });
+
+    describe("getWorkflowRunJobsResult", () => {
+      const pollIntervalMs = 100;
+      const runTimeoutMs = 1000;
+      const succeeded = {
+        name: "build",
+        status: "completed",
+        conclusion: "success",
+      } satisfies WorkflowRunJobState;
+
+      let apiFetchWorkflowRunJobStatesMock: MockInstance<
+        typeof api.fetchWorkflowRunJobStates
+      >;
+
+      beforeEach(() => {
+        apiFetchWorkflowRunJobStatesMock = vi.spyOn(
+          api,
+          "fetchWorkflowRunJobStates",
+        );
+        apiRetryOnErrorMock.mockImplementation(async (toTry) => ({
+          success: true,
+          value: await toTry(),
+        }));
+        apiFetchWorkflowRunStateMock.mockResolvedValue({
+          status: WorkflowRunStatus.InProgress,
+          conclusion: null,
+        });
+      });
+
+      it("resolves while the rest of the run is still in flight", async () => {
+        apiFetchWorkflowRunJobStatesMock.mockResolvedValue([
+          succeeded,
+          { name: "deploy", status: "in_progress", conclusion: null },
+        ]);
+
+        // Behaviour
+        const resultPromise = getWorkflowRunJobsResult({
+          startTime: Date.now(),
+          pollIntervalMs: pollIntervalMs,
+          runId: 0,
+          runTimeoutMs: runTimeoutMs,
+          jobs: ["build"],
+        });
+        await vi.advanceTimersByTimeAsync(runTimeoutMs);
+
+        expect(await resultPromise).toStrictEqual({
+          success: true,
+          value: [succeeded],
+        });
+        // Resolving early never cancels the run the deploy is still using.
+        expect(apiRequestWorkflowRunCancelMock).not.toHaveBeenCalled();
+
+        // Logging
+        assertNoneCalled();
+      });
+
+      it("polls until the awaited Job appears", async () => {
+        apiFetchWorkflowRunJobStatesMock
+          .mockResolvedValue([succeeded])
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([
+            { name: "build", status: "in_progress", conclusion: null },
+          ]);
+
+        // Behaviour
+        const resultPromise = getWorkflowRunJobsResult({
+          startTime: Date.now(),
+          pollIntervalMs: pollIntervalMs,
+          runId: 0,
+          runTimeoutMs: runTimeoutMs,
+          jobs: ["build"],
+        });
+        await vi.advanceTimersByTimeAsync(runTimeoutMs);
+
+        expect(await resultPromise).toMatchObject({ success: true });
+        expect(apiFetchWorkflowRunJobStatesMock).toHaveBeenCalledTimes(3);
+
+        // Logging
+        assertNoneCalled();
+      });
+
+      it("fails once the run concludes without the awaited Job", async () => {
+        apiFetchWorkflowRunStateMock.mockResolvedValue({
+          status: WorkflowRunStatus.Completed,
+          conclusion: WorkflowRunConclusion.Success,
+        });
+        apiFetchWorkflowRunJobStatesMock.mockResolvedValue([succeeded]);
+
+        // Behaviour
+        const resultPromise = getWorkflowRunJobsResult({
+          startTime: Date.now(),
+          pollIntervalMs: pollIntervalMs,
+          runId: 0,
+          runTimeoutMs: runTimeoutMs,
+          jobs: ["deploy"],
+        });
+        await vi.advanceTimersByTimeAsync(runTimeoutMs);
+
+        expect(await resultPromise).toStrictEqual({
+          success: false,
+          reason: "missing",
+          value: { missing: ["deploy"], observed: ["build"] },
+        });
+
+        // Logging
+        assertOnlyCalled(coreErrorLogMock);
+      });
+
+      it("times out while the awaited Job never completes", async () => {
+        apiRequestWorkflowRunCancelMock.mockResolvedValue({ success: true });
+        apiFetchWorkflowRunJobStatesMock.mockResolvedValue([
+          { name: "build", status: "in_progress", conclusion: null },
+        ]);
+
+        // Behaviour
+        const resultPromise = getWorkflowRunJobsResult({
+          startTime: Date.now(),
+          pollIntervalMs: pollIntervalMs,
+          runId: 0,
+          runTimeoutMs: runTimeoutMs,
+          cancelTimeoutMs: 300,
+          jobs: ["build"],
+        });
+        await vi.advanceTimersByTimeAsync(runTimeoutMs);
+
+        expect(await resultPromise).toStrictEqual({
+          success: false,
+          reason: "timeout",
+        });
+        // Cancellation still applies to the timeout path.
+        expect(apiRequestWorkflowRunCancelMock).toHaveBeenCalledOnce();
+
+        // Logging
+        assertOnlyCalled(coreWarningLogMock);
+      });
+
+      it("retries on request failures", async () => {
+        apiRetryOnErrorMock
+          .mockImplementation(async (toTry) => ({
+            success: true,
+            value: await toTry(),
+          }))
+          .mockResolvedValueOnce({ success: false, reason: "timeout" });
+        apiFetchWorkflowRunJobStatesMock.mockResolvedValue([succeeded]);
+
+        // Behaviour
+        const resultPromise = getWorkflowRunJobsResult({
+          startTime: Date.now(),
+          pollIntervalMs: pollIntervalMs,
+          runId: 0,
+          runTimeoutMs: runTimeoutMs,
+          jobs: ["build"],
+        });
+        await vi.advanceTimersByTimeAsync(runTimeoutMs);
+
+        expect(await resultPromise).toMatchObject({ success: true });
+
+        // Logging
+        assertOnlyCalled(coreDebugLogMock);
+        expect(coreDebugLogMock).toHaveBeenCalledOnce();
+        expect(coreDebugLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
+          `"Failed to fetch run Jobs, attempt 1..."`,
+        );
       });
     });
 
