@@ -239,7 +239,7 @@ export async function getWorkflowRunResult(
   });
 }
 
-type JobsResult = WorkflowRunJobsResult<WorkflowRunJobState>;
+export type JobsResult = WorkflowRunJobsResult<WorkflowRunJobState>;
 
 /**
  * The result the awaited Jobs settle on, or pending while they have yet to.

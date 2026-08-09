@@ -2,9 +2,55 @@ import * as core from "@actions/core";
 
 import { getConfig } from "./action.ts";
 import * as api from "./api.ts";
-import { getWorkflowRunResult, handleActionFail } from "./await-remote-run.ts";
+import {
+  getWorkflowRunJobsResult,
+  getWorkflowRunResult,
+  handleActionFail,
+  type JobsResult,
+} from "./await-remote-run.ts";
 import * as constants from "./constants.ts";
 import { WorkflowRunConclusion } from "./types.ts";
+
+/**
+ * Report the awaited Jobs, failing the action unless every one succeeded.
+ */
+async function handleJobsResult(
+  result: JobsResult,
+  runId: number,
+  startTime: number,
+): Promise<void> {
+  if (result.success) {
+    const names = result.value.map((job) => job.name);
+    core.info(
+      "Awaited Jobs Completed:\n" +
+        `  Run ID: ${runId}\n` +
+        `  Jobs: [${names.join(", ")}]`,
+    );
+    return;
+  }
+
+  let failureMsg: string;
+  switch (result.reason) {
+    case "timeout": {
+      const elapsedTime = Date.now() - startTime;
+      failureMsg = `Timeout exceeded while attempting to await the Jobs concluding (${elapsedTime}ms)`;
+      break;
+    }
+    case "inconclusive": {
+      const failed = result.value
+        .map((job) => `${job.name} (${String(job.conclusion)})`)
+        .join(", ");
+      failureMsg = `Awaited Jobs have concluded unsuccessfully: ${failed}`;
+      break;
+    }
+    case "missing": {
+      failureMsg = `Run concluded without the awaited Jobs completing: ${result.value.missing.join(", ")}`;
+      break;
+    }
+  }
+
+  await handleActionFail(failureMsg, runId);
+}
 
 export async function main(): Promise<void> {
   try {
@@ -26,14 +72,17 @@ export async function main(): Promise<void> {
       );
     }
     const runUrl = `https://github.com/${config.owner}/${config.repo}/actions/runs/${config.runId}`;
+    const awaiting =
+      config.jobs === undefined
+        ? `Workflow Run ${config.runId}`
+        : `Jobs [${config.jobs.join(", ")}] in Workflow Run ${config.runId}`;
     core.info(
-      `Awaiting completion of Workflow Run ${config.runId}...\n` +
+      `Awaiting completion of ${awaiting}...\n` +
         `  ID: ${config.runId}\n` +
         `  URL: ${activeJobUrlResult.success ? activeJobUrlResult.value : runUrl}`,
     );
 
-    // Await the result
-    const runResult = await getWorkflowRunResult({
+    const runOpts = {
       startTime,
       pollIntervalMs: config.pollIntervalMs,
       runId: config.runId,
@@ -42,7 +91,19 @@ export async function main(): Promise<void> {
         config.cancelTimeoutSeconds === undefined
           ? undefined
           : config.cancelTimeoutSeconds * 1000,
-    });
+    };
+
+    if (config.jobs !== undefined) {
+      const jobsResult = await getWorkflowRunJobsResult({
+        ...runOpts,
+        jobs: config.jobs,
+      });
+      await handleJobsResult(jobsResult, config.runId, startTime);
+      return;
+    }
+
+    // Await the result
+    const runResult = await getWorkflowRunResult(runOpts);
     if (!runResult.success) {
       const elapsedTime = Date.now() - startTime;
       const failureMsg =
