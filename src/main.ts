@@ -60,9 +60,9 @@ export async function main(): Promise<void> {
     const config = getConfig();
     api.init(config);
 
-    // Attempt to fetch and use the active job URL for logging.
-    // If this fails, we'll still attempt to await the run, but
-    // cannot log the URL.
+    // The active job URL is only used for logging, so a lookup that cannot
+    // resolve it within the timeout is warned about and the run is awaited
+    // regardless.
     const activeJobUrlResult = await api.fetchWorkflowRunActiveJobUrlRetry(
       config.runId,
       constants.WORKFLOW_RUN_ACTIVE_JOB_TIMEOUT_MS,

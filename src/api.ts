@@ -142,6 +142,19 @@ function isRetryable(error: HttpError): boolean {
 }
 
 /**
+ * Whether a failed Jobs lookup for a run may succeed on a later attempt.
+ *
+ * The Jobs listing lags the run's creation, so a run dispatched moments ago
+ * returns a 404 that fixes itself.
+ *
+ * A token without correct permissions can't will also get a 404, which is
+ * indistinguishable, so the caller must limit how long it keeps trying.
+ */
+function isTransientJobsLookupError(error: unknown): error is HttpError {
+  return isHttpError(error) && (error.status === 404 || isRetryable(error));
+}
+
+/**
  * Rate limiting is reported as a 403 or a 429, identified by an exhausted
  * remaining count or by being told when to try again.
  * See: https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api#exceeding-the-rate-limit
@@ -420,7 +433,7 @@ export async function fetchWorkflowRunActiveJobUrl(
       fetchedInProgressJobs[0]?.html_url ?? "GitHub failed to return the URL"
     );
   } catch (error) {
-    if (error instanceof Error) {
+    if (error instanceof Error && !isTransientJobsLookupError(error)) {
       core.error(
         `fetchWorkflowRunActiveJobUrl: An unexpected error has occurred: ${error.message}`,
       );
@@ -430,6 +443,13 @@ export async function fetchWorkflowRunActiveJobUrl(
   }
 }
 
+/**
+ * Resolve the URL of the run's first active Job, polling until one exists or
+ * `timeout` elapses.
+ *
+ * A transient lookup failure is treated the same as the run having no active
+ * Job yet. Any other failure is rethrown, as retrying cannot resolve it.
+ */
 export async function fetchWorkflowRunActiveJobUrlRetry(
   runId: number,
   timeout: number,
@@ -438,14 +458,24 @@ export async function fetchWorkflowRunActiveJobUrlRetry(
   let elapsedTime = Date.now() - startTime;
 
   while (elapsedTime < timeout) {
-    const url = await fetchWorkflowRunActiveJobUrl(runId);
-    if (url) {
-      return { success: true, value: url };
-    }
+    try {
+      const url = await fetchWorkflowRunActiveJobUrl(runId);
+      if (url) {
+        return { success: true, value: url };
+      }
 
-    core.debug(
-      `No 'in_progress' or 'completed' Jobs found for Workflow Run ${runId}, retrying...`,
-    );
+      core.debug(
+        `No 'in_progress' or 'completed' Jobs found for Workflow Run ${runId}, retrying...`,
+      );
+    } catch (error) {
+      if (!isTransientJobsLookupError(error)) {
+        throw error;
+      }
+
+      core.debug(
+        `Jobs for Workflow Run ${runId} are not yet available (${error.status}), retrying...`,
+      );
+    }
 
     await sleep(constants.WORKFLOW_RUN_ACTIVE_JOB_POLL_INTERVAL_MS);
     elapsedTime = Date.now() - startTime;
