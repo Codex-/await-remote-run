@@ -334,7 +334,7 @@ export async function fetchWorkflowRunFailedJobs(
     core.debug(
       `Fetched Jobs for Run:\n` +
         `  Repository: ${config.owner}/${config.repo}\n` +
-        `  Run ID: ${config.runId}\n` +
+        `  Run ID: ${runId}\n` +
         `  Jobs: [${runJobs.join(", ")}]`,
     );
 
@@ -421,7 +421,7 @@ export async function fetchWorkflowRunActiveJobUrl(
     core.debug(
       `Fetched Jobs for Run:\n` +
         `  Repository: ${config.owner}/${config.repo}\n` +
-        `  Run ID: ${config.runId}\n` +
+        `  Run ID: ${runId}\n` +
         `  Jobs: [${inProgressJobs.join(", ")}]`,
     );
 
