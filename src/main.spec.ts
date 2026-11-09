@@ -1,4 +1,5 @@
 import * as core from "@actions/core";
+import * as github from "@actions/github";
 import {
   afterAll,
   afterEach,
@@ -364,6 +365,35 @@ describe("main", () => {
       "Awaiting completion of Workflow Run 123456...
         ID: 123456
         URL: https://github.com/owner/repository/actions/runs/123456"
+    `);
+  });
+
+  it("should build the fallback run URL from the server URL for GitHub Enterprise", async () => {
+    const serverUrl = github.context.serverUrl;
+    github.context.serverUrl = "https://ghe.example.com";
+    apiFetchWorkflowRunActiveJobUrlRetry.mockResolvedValue({
+      success: false,
+      reason: "timeout",
+    });
+    awaitRemoteRunGetWorkflowRunResult.mockResolvedValue({
+      success: true,
+      value: {
+        status: WorkflowRunStatus.Completed,
+        conclusion: WorkflowRunConclusion.Success,
+      },
+    });
+
+    try {
+      await main();
+    } finally {
+      github.context.serverUrl = serverUrl;
+    }
+
+    // Logging
+    expect(coreInfoLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(`
+      "Awaiting completion of Workflow Run 123456...
+        ID: 123456
+        URL: https://ghe.example.com/owner/repository/actions/runs/123456"
     `);
   });
 
