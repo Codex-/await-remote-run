@@ -24017,6 +24017,30 @@ function requestHeaders(input, init2) {
   );
 }
 
+// src/types.ts
+var WorkflowRunStatus = /* @__PURE__ */ ((WorkflowRunStatus2) => {
+  WorkflowRunStatus2["Queued"] = "queued";
+  WorkflowRunStatus2["InProgress"] = "in_progress";
+  WorkflowRunStatus2["Requested"] = "requested";
+  WorkflowRunStatus2["Waiting"] = "waiting";
+  WorkflowRunStatus2["Pending"] = "pending";
+  WorkflowRunStatus2["Completed"] = "completed";
+  return WorkflowRunStatus2;
+})(WorkflowRunStatus || {});
+var WorkflowRunConclusion = /* @__PURE__ */ ((WorkflowRunConclusion2) => {
+  WorkflowRunConclusion2["Success"] = "success";
+  WorkflowRunConclusion2["Failure"] = "failure";
+  WorkflowRunConclusion2["Neutral"] = "neutral";
+  WorkflowRunConclusion2["Cancelled"] = "cancelled";
+  WorkflowRunConclusion2["Skipped"] = "skipped";
+  WorkflowRunConclusion2["TimedOut"] = "timed_out";
+  WorkflowRunConclusion2["Stale"] = "stale";
+  WorkflowRunConclusion2["StartupFailure"] = "startup_failure";
+  WorkflowRunConclusion2["ActionRequired"] = "action_required";
+  return WorkflowRunConclusion2;
+})(WorkflowRunConclusion || {});
+var POLL_PENDING = { done: false };
+
 // src/utils.ts
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -24032,6 +24056,14 @@ function init(cfg) {
     request: { fetch: withEtagCache(proxyAwareFetch) }
   });
 }
+var workflowRunStatusSet = new Set(Object.values(WorkflowRunStatus));
+function isWorkflowRunStatus(status) {
+  return workflowRunStatusSet.has(status);
+}
+var workflowRunConclusionSet = new Set(Object.values(WorkflowRunConclusion));
+function isWorkflowRunConclusion(conclusion) {
+  return workflowRunConclusionSet.has(conclusion);
+}
 async function fetchWorkflowRunState(runId) {
   try {
     const response = await octokit.rest.actions.getWorkflowRun({
@@ -24044,16 +24076,18 @@ async function fetchWorkflowRunState(runId) {
         `Failed to fetch Workflow Run state, expected 200 but received ${response.status}`
       );
     }
+    const workflowRunStatus = response.data.status && isWorkflowRunStatus(response.data.status) ? response.data.status : null;
+    const workflowRunConclusion = response.data.conclusion && isWorkflowRunConclusion(response.data.conclusion) ? response.data.conclusion : null;
     debug(
       `Fetched Run:
   Repository: ${config.owner}/${config.repo}
   Run ID: ${runId}
-  Status: ${response.data.status}
-  Conclusion: ${response.data.conclusion}`
+  Status: ${workflowRunStatus}
+  Conclusion: ${workflowRunConclusion}`
     );
     return {
-      status: response.data.status,
-      conclusion: response.data.conclusion
+      status: workflowRunStatus,
+      conclusion: workflowRunConclusion
     };
   } catch (error2) {
     if (error2 instanceof Error) {
@@ -24115,7 +24149,7 @@ async function requestWorkflowRunCancel(runId) {
     return { success: false, reason: "failed" };
   }
 }
-async function fetchWorkflowRunJobs(runId) {
+function fetchWorkflowRunJobs(runId) {
   return octokit.paginate(octokit.rest.actions.listJobsForWorkflowRun, {
     owner: config.owner,
     repo: config.repo,
@@ -24286,9 +24320,6 @@ async function retryOnError(func, timeoutMs, functionName) {
     reason: "timeout"
   };
 }
-
-// src/types.ts
-var POLL_PENDING = { done: false };
 
 // src/await-remote-run.ts
 function getWorkflowRunStatusResult(status, attemptNo) {
