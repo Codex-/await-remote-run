@@ -35,7 +35,7 @@
     "@eslint/js": "10.0.1",
     "@total-typescript/ts-reset": "0.6.1",
     "@tsconfig/node24": "24.0.4",
-    "@types/node": "24.13.3",
+    "@types/node": "26.6.6",
     "@vitest/coverage-v8": "4.1.10",
     "chalk": "6.0.0",
     "changelogithub": "15.0.4",
