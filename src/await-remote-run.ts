@@ -179,6 +179,9 @@ interface RunOpts {
 /**
  * Poll the run until `attempt` settles on a result or the run timeout elapses,
  * requesting cancellation on the way if one was configured.
+ *
+ * A configured cancellation is guaranteed to have been requested by the time
+ * this returns on timeout, even if no poll fell between the two timeouts.
  */
 async function pollRun<T>(
   { startTime, runId, runTimeoutMs, pollIntervalMs, cancelTimeoutMs }: RunOpts,
@@ -186,6 +189,16 @@ async function pollRun<T>(
 ): Promise<T | { success: false; reason: "timeout" }> {
   let attemptNo = 0;
   let cancelRequested = false;
+  // Resolves to whether the request has settled. A failed request may be
+  // transient, so it is left outstanding for the next poll to retry.
+  const requestCancel = async (elapsedTime: number): Promise<boolean> => {
+    core.warning(
+      `Cancel timeout exceeded (${elapsedTime}ms), requesting cancellation of Workflow Run ${runId}`,
+    );
+    const cancelResult = await requestWorkflowRunCancel(runId);
+    return cancelResult.success || cancelResult.reason === "rejected";
+  };
+
   while (Date.now() - startTime < runTimeoutMs) {
     attemptNo++;
 
@@ -200,17 +213,17 @@ async function pollRun<T>(
       !cancelRequested &&
       elapsedTime >= cancelTimeoutMs
     ) {
-      core.warning(
-        `Cancel timeout exceeded (${elapsedTime}ms), requesting cancellation of Workflow Run ${runId}`,
-      );
-      const cancelResult = await requestWorkflowRunCancel(runId);
-      // A failed request may be transient, so leave the request outstanding for
-      // the next poll to retry within the remaining run timeout.
-      cancelRequested =
-        cancelResult.success || cancelResult.reason === "rejected";
+      cancelRequested = await requestCancel(elapsedTime);
     }
 
     await sleep(pollIntervalMs);
+  }
+
+  // The cancel timeout can elapse during the final sleep, or a failed request
+  // can still be outstanding. The run is being given up on either way, so
+  // leaving it running would defeat the point of configuring cancellation.
+  if (cancelTimeoutMs !== undefined && !cancelRequested) {
+    await requestCancel(Date.now() - startTime);
   }
 
   return {

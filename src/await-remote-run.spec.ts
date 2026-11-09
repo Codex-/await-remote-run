@@ -855,6 +855,34 @@ describe("await-remote-run", () => {
         );
       });
 
+      it("requests cancellation on timeout when the cancel timeout fell inside the last poll interval", async () => {
+        apiRequestWorkflowRunCancelMock.mockResolvedValue({ success: true });
+        // No poll lands between the cancel timeout and the run timeout.
+        const lateCancelTimeoutMs = runTimeoutMs - pollIntervalMs / 2;
+
+        // Behaviour
+        const getWorkflowRunResultPromise = getWorkflowRunResult({
+          startTime: Date.now(),
+          pollIntervalMs: pollIntervalMs,
+          runId: 0,
+          runTimeoutMs: runTimeoutMs,
+          cancelTimeoutMs: lateCancelTimeoutMs,
+        });
+        await vi.advanceTimersByTimeAsync(runTimeoutMs);
+        const result = await getWorkflowRunResultPromise;
+
+        expect(result).toStrictEqual({ success: false, reason: "timeout" });
+        expect(apiRequestWorkflowRunCancelMock).toHaveBeenCalledOnce();
+        expect(apiRequestWorkflowRunCancelMock).toHaveBeenCalledWith(0);
+
+        // Logging
+        assertOnlyCalled(coreDebugLogMock, coreWarningLogMock);
+        expect(coreWarningLogMock).toHaveBeenCalledOnce();
+        expect(coreWarningLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
+          `"Cancel timeout exceeded (1000ms), requesting cancellation of Workflow Run 0"`,
+        );
+      });
+
       it("does not request cancellation if no cancel timeout is given", async () => {
         // Behaviour
         const getWorkflowRunResultPromise = getWorkflowRunResult({
