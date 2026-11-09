@@ -142,7 +142,7 @@ describe("await-remote-run", () => {
     it("should return unsupported on an unknown status", () => {
       // Behaviour
       const result = getWorkflowRunStatusResult(
-        "random_status" as WorkflowRunStatus,
+        "random_status" as unknown as WorkflowRunStatus,
         0,
       );
       if (result.success) {
@@ -184,7 +184,7 @@ describe("await-remote-run", () => {
     it("should return non-success on an unsupported conclusion", () => {
       // Behaviour
       const result = getWorkflowRunConclusionResult(
-        "random_conclusion" as WorkflowRunConclusion,
+        "random_conclusion" as unknown as WorkflowRunConclusion,
       );
       if (result.success) {
         expect.fail();

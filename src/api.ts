@@ -5,9 +5,9 @@ import { defaults as githubDefaults } from "@actions/github/lib/utils";
 import { type ActionConfig, getConfig } from "./action.ts";
 import * as constants from "./constants.ts";
 import { withEtagCache } from "./etag/fetch.ts";
-import type {
-  Result,
-  WorkflowRunCancelResult,
+import {
+  type Result,
+  type WorkflowRunCancelResult,
   WorkflowRunConclusion,
   WorkflowRunStatus,
 } from "./types.ts";
@@ -36,6 +36,18 @@ export function init(cfg?: ActionConfig): void {
   });
 }
 
+const workflowRunStatusSet = new Set(Object.values(WorkflowRunStatus));
+function isWorkflowRunStatus(status: string): status is WorkflowRunStatus {
+  return workflowRunStatusSet.has(status);
+}
+
+const workflowRunConclusionSet = new Set(Object.values(WorkflowRunConclusion));
+function isWorkflowRunConclusion(
+  conclusion: string,
+): conclusion is WorkflowRunConclusion {
+  return workflowRunConclusionSet.has(conclusion);
+}
+
 interface WorkflowRunState {
   status: WorkflowRunStatus | null;
   conclusion: WorkflowRunConclusion | null;
@@ -60,17 +72,26 @@ export async function fetchWorkflowRunState(
       );
     }
 
+    const workflowRunStatus =
+      response.data.status && isWorkflowRunStatus(response.data.status)
+        ? response.data.status
+        : null;
+    const workflowRunConclusion =
+      response.data.conclusion &&
+      isWorkflowRunConclusion(response.data.conclusion)
+        ? response.data.conclusion
+        : null;
     core.debug(
       `Fetched Run:\n` +
         `  Repository: ${config.owner}/${config.repo}\n` +
         `  Run ID: ${runId}\n` +
-        `  Status: ${response.data.status}\n` +
-        `  Conclusion: ${response.data.conclusion}`,
+        `  Status: ${workflowRunStatus}\n` +
+        `  Conclusion: ${workflowRunConclusion}`,
     );
 
     return {
-      status: response.data.status as WorkflowRunStatus | null,
-      conclusion: response.data.conclusion as WorkflowRunConclusion | null,
+      status: workflowRunStatus,
+      conclusion: workflowRunConclusion,
     };
   } catch (error) {
     if (error instanceof Error) {
