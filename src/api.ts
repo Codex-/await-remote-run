@@ -246,7 +246,7 @@ type ListedJob = ListJobsForWorkflowRunResponse["data"]["jobs"][number];
  * Costs a request per `JOBS_PER_PAGE` Jobs, so prefer
  * `fetchWorkflowRunJobsFirstPage` where any one Job will do.
  */
-async function fetchWorkflowRunJobs(runId: number): Promise<ListedJob[]> {
+function fetchWorkflowRunJobs(runId: number): Promise<ListedJob[]> {
   // https://docs.github.com/en/rest/actions/workflow-jobs#list-jobs-for-a-workflow-run
   return octokit.paginate(octokit.rest.actions.listJobsForWorkflowRun, {
     owner: config.owner,
