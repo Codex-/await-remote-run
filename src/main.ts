@@ -55,8 +55,6 @@ async function handleJobsResult(
 
 export async function main(): Promise<void> {
   try {
-    const startTime = Date.now();
-
     const config = getConfig();
     api.init(config);
 
@@ -83,6 +81,9 @@ export async function main(): Promise<void> {
         `  URL: ${activeJobUrlResult.success ? activeJobUrlResult.value : runUrl}`,
     );
 
+    // Resolving the active job URL can take up to its own timeout, so the
+    // run timeout only starts counting once polling for the run does.
+    const startTime = Date.now();
     const runOpts = {
       startTime,
       pollIntervalMs: config.pollIntervalMs,

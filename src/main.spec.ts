@@ -434,6 +434,30 @@ describe("main", () => {
     `);
   });
 
+  it("should start the run timeout after the active job URL has resolved", async () => {
+    const lookupDurationMs = constants.WORKFLOW_RUN_ACTIVE_JOB_TIMEOUT_MS;
+    const lookupStart = Date.now();
+    apiFetchWorkflowRunActiveJobUrlRetry.mockImplementation(() => {
+      vi.setSystemTime(lookupStart + lookupDurationMs);
+      return Promise.resolve({ success: false, reason: "timeout" });
+    });
+    awaitRemoteRunGetWorkflowRunResult.mockResolvedValue({
+      success: true,
+      value: {
+        status: WorkflowRunStatus.Completed,
+        conclusion: WorkflowRunConclusion.Success,
+      },
+    });
+
+    await main();
+
+    // Behaviour
+    expect(awaitRemoteRunGetWorkflowRunResult).toHaveBeenCalledOnce();
+    expect(awaitRemoteRunGetWorkflowRunResult).toHaveBeenCalledWith(
+      expect.objectContaining({ startTime: lookupStart + lookupDurationMs }),
+    );
+  });
+
   it("should fail if awaiting the run result times out", async () => {
     apiFetchWorkflowRunActiveJobUrlRetry.mockResolvedValue({
       success: true,
