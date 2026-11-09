@@ -53,4 +53,4 @@ jobs:
           persist-credentials: false
       - uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4
       - run: pnpm i
-      - uses: codex-/knip-reporter@438819707021437618b2527e668b0d1e491db05e # v3
+      - uses: codex-/knip-reporter@7ee82434e4adcb560038aaa59bc647fe8c3c6ee4 # v4
