@@ -1,4 +1,5 @@
 import * as core from "@actions/core";
+import * as github from "@actions/github";
 
 import { getConfig } from "./action.ts";
 import * as api from "./api.ts";
@@ -71,7 +72,7 @@ export async function main(): Promise<void> {
         `Unable to fetch active job URL (reason: ${activeJobUrlResult.reason}), continuing...`,
       );
     }
-    const runUrl = `https://github.com/${config.owner}/${config.repo}/actions/runs/${config.runId}`;
+    const runUrl = `${github.context.serverUrl}/${config.owner}/${config.repo}/actions/runs/${config.runId}`;
     const awaiting =
       config.jobs === undefined
         ? `Workflow Run ${config.runId}`
