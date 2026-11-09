@@ -94,7 +94,7 @@ exports[`await-remote-run > getWorkflowRunResult > returns the conclusion if ava
 ]
 `;
 
-exports[`await-remote-run > handleActionFail > should fetch and log failed jobs from the remote run 2`] = `
+exports[`await-remote-run > handleActionFail > should fetch and log failed jobs from the remote run 1`] = `
 "Job First Job:
   ID: 0
   Status: completed
@@ -106,7 +106,7 @@ exports[`await-remote-run > handleActionFail > should fetch and log failed jobs 
       Conclusion: failure"
 `;
 
-exports[`await-remote-run > handleActionFail > should fetch and log failed jobs from the remote run 3`] = `
+exports[`await-remote-run > handleActionFail > should fetch and log failed jobs from the remote run 2`] = `
 "Job Second Job:
   ID: 0
   Status: completed
@@ -116,7 +116,7 @@ exports[`await-remote-run > handleActionFail > should fetch and log failed jobs 
     (none)"
 `;
 
-exports[`await-remote-run > handleActionFail > should only log steps that did not succeed 2`] = `
+exports[`await-remote-run > handleActionFail > should only log steps that did not succeed 1`] = `
 "Job First Job:
   ID: 0
   Status: completed

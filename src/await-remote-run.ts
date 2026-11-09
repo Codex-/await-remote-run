@@ -80,8 +80,7 @@ export async function handleActionFail(
   failureMsg: string,
   runId: number,
 ): Promise<void> {
-  core.error(`Failed: ${failureMsg}`);
-  core.setFailed(failureMsg);
+  core.setFailed(`Failed: ${failureMsg}`);
 
   // Handle and log errors here so teardown errors don't leak to the caller
   // catch and end up overriding the `setFailed` with the wrong error.

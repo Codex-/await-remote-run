@@ -134,12 +134,10 @@ export async function main(): Promise<void> {
     if (error instanceof Error) {
       const failureMsg = `Failed: An unhandled error has occurred: ${error.message}`;
       core.setFailed(failureMsg);
-      core.error(failureMsg);
       core.debug(error.stack ?? "");
     } else {
       const failureMsg = `Failed: An unknown error has occurred: ${String(error)}`;
       core.setFailed(failureMsg);
-      core.error(failureMsg);
       core.debug(String(error));
     }
   }

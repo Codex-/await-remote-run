@@ -438,15 +438,12 @@ describe("await-remote-run", () => {
       await handleActionFail(testMsg, 0);
 
       // Behaviour
-      expect(setFailedSpy).toHaveBeenCalled();
+      expect(setFailedSpy).toHaveBeenCalledOnce();
+      expect(setFailedSpy).toHaveBeenCalledWith("Failed: Test Message");
       expect(setOutputSpy).not.toHaveBeenCalled();
 
       // Logging
-      assertOnlyCalled(coreErrorLogMock);
-      expect(coreErrorLogMock).toHaveBeenCalledOnce();
-      expect(coreErrorLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(
-        `"Failed: Test Message"`,
-      );
+      assertNoneCalled();
     });
 
     it("should fetch and log failed jobs from the remote run", async () => {
@@ -489,12 +486,9 @@ describe("await-remote-run", () => {
 
       // Logging
       assertOnlyCalled(coreErrorLogMock);
-      expect(coreErrorLogMock).toHaveBeenCalledTimes(3);
-      expect(coreErrorLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(
-        `"Failed: Test Message"`,
-      );
+      expect(coreErrorLogMock).toHaveBeenCalledTimes(2);
+      expect(coreErrorLogMock.mock.calls[0]?.[0]).toMatchSnapshot();
       expect(coreErrorLogMock.mock.calls[1]?.[0]).toMatchSnapshot();
-      expect(coreErrorLogMock.mock.calls[2]?.[0]).toMatchSnapshot();
     });
 
     it("should swallow errors from fetching failed jobs", async () => {
@@ -508,15 +502,11 @@ describe("await-remote-run", () => {
       // We want to ensure that the original `setFailed` reason
       // is preserved. Teardown errors shouldn't leak to the caller.
       expect(setFailedSpy).toHaveBeenCalledOnce();
-      expect(setFailedSpy).toHaveBeenCalledWith(testMsg);
+      expect(setFailedSpy).toHaveBeenCalledWith(`Failed: ${testMsg}`);
       expect(setOutputSpy).not.toHaveBeenCalled();
 
       // Logging
-      assertOnlyCalled(coreErrorLogMock, coreWarningLogMock);
-      expect(coreErrorLogMock).toHaveBeenCalledOnce();
-      expect(coreErrorLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(
-        `"Failed: Original Failure"`,
-      );
+      assertOnlyCalled(coreWarningLogMock);
       expect(coreWarningLogMock).toHaveBeenCalledOnce();
       expect(coreWarningLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(
         `"Unable to log failed job details for Workflow Run 42: boom"`,
@@ -560,11 +550,8 @@ describe("await-remote-run", () => {
 
       // Logging
       assertOnlyCalled(coreErrorLogMock);
-      expect(coreErrorLogMock).toHaveBeenCalledTimes(2);
-      expect(coreErrorLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(
-        `"Failed: Test Message"`,
-      );
-      expect(coreErrorLogMock.mock.calls[1]?.[0]).toMatchSnapshot();
+      expect(coreErrorLogMock).toHaveBeenCalledOnce();
+      expect(coreErrorLogMock.mock.calls[0]?.[0]).toMatchSnapshot();
     });
   });
 
