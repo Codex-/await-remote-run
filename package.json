@@ -47,7 +47,7 @@
     "eslint-plugin-import-x": "4.17.1",
     "knip": "6.31.0",
     "prettier": "3.9.6",
-    "typescript": "6.0.3",
+    "typescript": "7.0.2",
     "typescript-eslint": "8.65.0",
     "vitest": "4.1.11"
   }
