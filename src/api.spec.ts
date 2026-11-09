@@ -991,6 +991,97 @@ describe("API", () => {
               Jobs: [test-run (in_progress)]"
           `);
         });
+
+        it("should retry a 404 until the jobs become available", async () => {
+          vi.spyOn(mockOctokit.rest.actions, "listJobsForWorkflowRun")
+            .mockImplementation(() =>
+              Promise.resolve({
+                data: inProgressMockData,
+                status: 200,
+                headers: {},
+              }),
+            )
+            .mockRejectedValueOnce(mockHttpError("Not Found", 404));
+
+          // Behaviour
+          const urlPromise = fetchWorkflowRunActiveJobUrlRetry(123456, 5000);
+          await vi.advanceTimersByTimeAsync(
+            constants.WORKFLOW_RUN_ACTIVE_JOB_POLL_INTERVAL_MS,
+          );
+
+          const result = await urlPromise;
+
+          if (!result.success) {
+            expect.fail();
+          }
+
+          expect(result.value).toStrictEqual(
+            inProgressMockData.jobs[0]?.html_url,
+          );
+
+          // Logging
+          assertOnlyCalled(coreDebugLogMock);
+          expect(coreDebugLogMock).toHaveBeenCalledTimes(2);
+          expect(coreDebugLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(
+            `"Jobs for Workflow Run 123456 are not yet available (404), retrying..."`,
+          );
+          expect(coreDebugLogMock.mock.calls[1]?.[0]).toMatchInlineSnapshot(`
+            "Fetched Jobs for Run:
+              Repository: owner/repository
+              Run ID: 123456
+              Jobs: [test-run (in_progress)]"
+          `);
+        });
+
+        it("should time out if the jobs remain unavailable", async () => {
+          vi.spyOn(
+            mockOctokit.rest.actions,
+            "listJobsForWorkflowRun",
+          ).mockRejectedValue(mockHttpError("Not Found", 404));
+
+          // Behaviour
+          const urlPromise = fetchWorkflowRunActiveJobUrlRetry(123456, 100);
+          await vi.advanceTimersByTimeAsync(
+            constants.WORKFLOW_RUN_ACTIVE_JOB_POLL_INTERVAL_MS,
+          );
+
+          const result = await urlPromise;
+
+          if (result.success) {
+            expect.fail();
+          }
+
+          expect(result.reason).toStrictEqual("timeout");
+
+          // Logging
+          assertOnlyCalled(coreDebugLogMock);
+          expect(coreDebugLogMock).toHaveBeenCalledTimes(2);
+          expect(coreDebugLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(
+            `"Jobs for Workflow Run 123456 are not yet available (404), retrying..."`,
+          );
+          expect(coreDebugLogMock.mock.calls[1]?.[0]).toMatchInlineSnapshot(
+            `"Timed out while trying to fetch URL for Workflow Run 123456"`,
+          );
+        });
+
+        it("should rethrow a failure that retrying cannot resolve", async () => {
+          vi.spyOn(
+            mockOctokit.rest.actions,
+            "listJobsForWorkflowRun",
+          ).mockRejectedValue(mockHttpError("Bad credentials", 401));
+
+          // Behaviour
+          await expect(
+            fetchWorkflowRunActiveJobUrlRetry(123456, 5000),
+          ).rejects.toThrow("Bad credentials");
+
+          // Logging
+          assertOnlyCalled(coreErrorLogMock, coreDebugLogMock);
+          expect(coreErrorLogMock).toHaveBeenCalledOnce();
+          expect(coreErrorLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
+            `"fetchWorkflowRunActiveJobUrl: An unexpected error has occurred: Bad credentials"`,
+          );
+        });
       });
     });
   });

@@ -24794,6 +24794,9 @@ function isRetryable(error2) {
   }
   return error2.status === 403 && isRateLimited(error2);
 }
+function isTransientJobsLookupError(error2) {
+  return isHttpError(error2) && (error2.status === 404 || isRetryable(error2));
+}
 function isRateLimited(error2) {
   const headers = error2.response?.headers;
   return headers?.["retry-after"] !== void 0 || headers?.["x-ratelimit-remaining"] === "0";
@@ -24953,7 +24956,7 @@ async function fetchWorkflowRunActiveJobUrl(runId) {
     }
     return fetchedInProgressJobs[0]?.html_url ?? "GitHub failed to return the URL";
   } catch (error2) {
-    if (error2 instanceof Error) {
+    if (error2 instanceof Error && !isTransientJobsLookupError(error2)) {
       error(
         `fetchWorkflowRunActiveJobUrl: An unexpected error has occurred: ${error2.message}`
       );
@@ -24966,13 +24969,22 @@ async function fetchWorkflowRunActiveJobUrlRetry(runId, timeout) {
   const startTime = Date.now();
   let elapsedTime = Date.now() - startTime;
   while (elapsedTime < timeout) {
-    const url = await fetchWorkflowRunActiveJobUrl(runId);
-    if (url) {
-      return { success: true, value: url };
+    try {
+      const url = await fetchWorkflowRunActiveJobUrl(runId);
+      if (url) {
+        return { success: true, value: url };
+      }
+      debug(
+        `No 'in_progress' or 'completed' Jobs found for Workflow Run ${runId}, retrying...`
+      );
+    } catch (error2) {
+      if (!isTransientJobsLookupError(error2)) {
+        throw error2;
+      }
+      debug(
+        `Jobs for Workflow Run ${runId} are not yet available (${error2.status}), retrying...`
+      );
     }
-    debug(
-      `No 'in_progress' or 'completed' Jobs found for Workflow Run ${runId}, retrying...`
-    );
     await sleep(WORKFLOW_RUN_ACTIVE_JOB_POLL_INTERVAL_MS);
     elapsedTime = Date.now() - startTime;
   }
