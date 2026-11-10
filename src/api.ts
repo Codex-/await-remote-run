@@ -5,7 +5,11 @@ import { defaults as githubDefaults } from "@actions/github/lib/utils";
 import { type ActionConfig, getConfig } from "./action.ts";
 import * as constants from "./constants.ts";
 import { withEtagCache } from "./etag/fetch.ts";
-import { type Result, type WorkflowRunCancelResult } from "./types.ts";
+import {
+  type Result,
+  type ResultUnrecoverable,
+  type WorkflowRunCancelResult,
+} from "./types.ts";
 import { sleep } from "./utils.ts";
 
 type Octokit = ReturnType<(typeof github)["getOctokit"]>;
@@ -461,12 +465,14 @@ export async function fetchWorkflowRunActiveJobUrl(
  * `timeout` elapses.
  *
  * A transient lookup failure is treated the same as the run having no active
- * Job yet. Any other failure is rethrown, as retrying cannot resolve it.
+ * Job yet. Any other failure ends the lookup as unrecoverable rather than
+ * throwing, as the URL is only used for logging and the caller's own fetches
+ * will surface the problem.
  */
 export async function fetchWorkflowRunActiveJobUrlRetry(
   runId: number,
   timeout: number,
-): Promise<Result<string>> {
+): Promise<Result<string> | ResultUnrecoverable> {
   const startTime = Date.now();
   let elapsedTime = Date.now() - startTime;
 
@@ -488,7 +494,14 @@ export async function fetchWorkflowRunActiveJobUrlRetry(
       );
     } catch (error) {
       if (!isTransientJobsLookupError(error)) {
-        throw error;
+        core.debug(
+          `Giving up on the URL for Workflow Run ${runId}, the request cannot succeed`,
+        );
+        return {
+          success: false,
+          reason: "unrecoverable",
+          value: error instanceof Error ? error.message : String(error),
+        };
       }
 
       core.debug(

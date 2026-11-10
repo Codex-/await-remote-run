@@ -1165,22 +1165,29 @@ describe("API", () => {
           );
         });
 
-        it("should rethrow a failure that retrying cannot resolve", async () => {
-          vi.spyOn(
-            mockOctokit.rest.actions,
-            "listJobsForWorkflowRun",
-          ).mockRejectedValue(mockHttpError("Bad credentials", 401));
+        it("should give up without retrying on a failure that retrying cannot resolve", async () => {
+          const listJobsSpy = vi
+            .spyOn(mockOctokit.rest.actions, "listJobsForWorkflowRun")
+            .mockRejectedValue(mockHttpError("Bad credentials", 401));
 
           // Behaviour
-          await expect(
-            fetchWorkflowRunActiveJobUrlRetry(123456, 5000),
-          ).rejects.toThrow("Bad credentials");
+          const result = await fetchWorkflowRunActiveJobUrlRetry(123456, 5000);
+
+          expect(result).toStrictEqual({
+            success: false,
+            reason: "unrecoverable",
+            value: "Bad credentials",
+          });
+          expect(listJobsSpy).toHaveBeenCalledOnce();
 
           // Logging
           assertOnlyCalled(coreErrorLogMock, coreDebugLogMock);
           expect(coreErrorLogMock).toHaveBeenCalledOnce();
           expect(coreErrorLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
             `"fetchWorkflowRunActiveJobUrl: An unexpected error has occurred: Bad credentials"`,
+          );
+          expect(coreDebugLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
+            `"Giving up on the URL for Workflow Run 123456, the request cannot succeed"`,
           );
         });
       });
