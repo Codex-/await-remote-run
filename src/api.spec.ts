@@ -11,6 +11,7 @@ import {
 } from "vitest";
 
 import {
+  classifyRequestFailure,
   fetchWorkflowRunActiveJobUrl,
   fetchWorkflowRunActiveJobUrlRetry,
   fetchWorkflowRunFailedJobs,
@@ -107,6 +108,56 @@ describe("API", () => {
 
   afterEach(() => {
     vi.resetAllMocks();
+  });
+
+  describe("classifyRequestFailure", () => {
+    it.each([
+      {
+        label: "a 401",
+        error: mockHttpError("Bad credentials", 401),
+        expected: "permanent",
+      },
+      {
+        label: "a 403 that is not a rate limit",
+        error: mockHttpError("Forbidden", 403),
+        expected: "permanent",
+      },
+      {
+        label: "a 403 with the rate limit exhausted",
+        error: mockHttpError("Forbidden", 403, {
+          "x-ratelimit-remaining": "0",
+        }),
+        expected: "transient",
+      },
+      {
+        label: "a 403 with retry-after",
+        error: mockHttpError("Forbidden", 403, { "retry-after": "60" }),
+        expected: "transient",
+      },
+      {
+        label: "a 404",
+        error: mockHttpError("Not Found", 404),
+        expected: "not_found",
+      },
+      {
+        label: "a 429",
+        error: mockHttpError("Too Many Requests", 429),
+        expected: "transient",
+      },
+      {
+        label: "a 500",
+        error: mockHttpError("Server Error", 500),
+        expected: "transient",
+      },
+      {
+        label: "an error not from Octokit",
+        error: new Error("socket hang up"),
+        expected: "transient",
+      },
+      { label: "a non-error", error: "boom", expected: "transient" },
+    ])("classifies $label as $expected", ({ error, expected }) => {
+      expect(classifyRequestFailure(error)).toStrictEqual(expected);
+    });
   });
 
   describe("fetchWorkflowRunState", () => {

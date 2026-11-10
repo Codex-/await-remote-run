@@ -43,10 +43,22 @@ interface ResultUnsupported {
   value: string;
 }
 
-export type WorkflowRunResult = Result<{
-  status: WorkflowRunStatus.Completed;
-  conclusion: WorkflowRunConclusion;
-}>;
+/**
+ * A request failed in a way no later poll can fix, such as a token that
+ * cannot see the run. `value` is the error message.
+ */
+export interface ResultUnrecoverable {
+  success: false;
+  reason: "unrecoverable";
+  value: string;
+}
+
+export type WorkflowRunResult =
+  | Result<{
+      status: WorkflowRunStatus.Completed;
+      conclusion: WorkflowRunConclusion;
+    }>
+  | ResultUnrecoverable;
 
 /**
  * The outcome of awaiting named Jobs, generic over the Job shape so this stays
@@ -56,7 +68,8 @@ export type WorkflowRunJobsResult<TJob> =
   | ResultSuccess<TJob[]>
   | RequestTimeout
   | ResultJobsInconclusive<TJob>
-  | ResultJobsMissing;
+  | ResultJobsMissing
+  | ResultUnrecoverable;
 
 interface ResultJobsInconclusive<TJob> {
   success: false;

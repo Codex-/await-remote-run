@@ -134,6 +134,39 @@ function isTransientJobsLookupError(error: unknown): error is HttpError {
   return isHttpError(error) && (error.status === 404 || isRetryable(error));
 }
 
+export type RequestFailure = "permanent" | "not_found" | "transient";
+
+/**
+ * How a caller that polls should treat a failed request.
+ *
+ * `permanent` is a 401, or a 403 that is not a rate limit: the credentials or
+ * permissions are wrong and no retry can help. `not_found` is a 404, which is a
+ * run that does not exist or that the token cannot see, but a freshly
+ * dispatched run can also 404 briefly, so the caller decides how long to
+ * tolerate it. Everything else is `transient`, including a request that never
+ * reached GitHub.
+ */
+export function classifyRequestFailure(error: unknown): RequestFailure {
+  if (!isHttpError(error)) {
+    return "transient";
+  }
+
+  switch (error.status) {
+    case 401: {
+      return "permanent";
+    }
+    case 403: {
+      return isRateLimited(error) ? "transient" : "permanent";
+    }
+    case 404: {
+      return "not_found";
+    }
+    default: {
+      return "transient";
+    }
+  }
+}
+
 /**
  * Rate limiting is reported as a 403 or a 429, identified by an exhausted
  * remaining count or by being told when to try again.

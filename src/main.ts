@@ -48,6 +48,10 @@ async function handleJobsResult(
       failureMsg = `Run concluded without the awaited Jobs completing: ${result.value.missing.join(", ")}`;
       break;
     }
+    case "unrecoverable": {
+      failureMsg = `Unable to fetch Workflow Run ${runId}, giving up: ${result.value}`;
+      break;
+    }
   }
 
   await handleActionFail(failureMsg, runId);
@@ -107,11 +111,22 @@ export async function main(): Promise<void> {
     // Await the result
     const runResult = await getWorkflowRunResult(runOpts);
     if (!runResult.success) {
-      const elapsedTime = Date.now() - startTime;
-      const failureMsg =
-        runResult.reason === "timeout"
-          ? `Timeout exceeded while attempting to await run conclusion (${elapsedTime}ms)`
-          : `An unsupported value was reached: ${runResult.value}`;
+      let failureMsg: string;
+      switch (runResult.reason) {
+        case "timeout": {
+          const elapsedTime = Date.now() - startTime;
+          failureMsg = `Timeout exceeded while attempting to await run conclusion (${elapsedTime}ms)`;
+          break;
+        }
+        case "unsupported": {
+          failureMsg = `An unsupported value was reached: ${runResult.value}`;
+          break;
+        }
+        case "unrecoverable": {
+          failureMsg = `Unable to fetch Workflow Run ${config.runId}, giving up: ${runResult.value}`;
+          break;
+        }
+      }
       await handleActionFail(failureMsg, config.runId);
       return;
     }

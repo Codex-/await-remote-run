@@ -1,6 +1,7 @@
 import * as core from "@actions/core";
 
 import {
+  classifyRequestFailure,
   fetchWorkflowRunFailedJobs,
   fetchWorkflowRunJobStates,
   fetchWorkflowRunState,
@@ -8,11 +9,13 @@ import {
   type WorkflowRunJobState,
   type WorkflowRunState,
 } from "./api.ts";
+import * as constants from "./constants.ts";
 import {
   POLL_PENDING,
   WorkflowRunConclusion,
   WorkflowRunStatus,
   type PollAttempt,
+  type ResultUnrecoverable,
   type WorkflowRunConclusionResult,
   type WorkflowRunJobsResult,
   type WorkflowRunResult,
@@ -225,6 +228,54 @@ async function pollRun<T>(
   };
 }
 
+/**
+ * Whether a fetch failure ends polling, as no later poll can succeed.
+ *
+ * A 404 is tolerated for `WORKFLOW_RUN_NOT_FOUND_GRACE_MS` from `startTime`,
+ * as a freshly dispatched run can be missing briefly.
+ */
+function isUnrecoverable(error: unknown, startTime: number): boolean {
+  switch (classifyRequestFailure(error)) {
+    case "permanent": {
+      return true;
+    }
+    case "not_found": {
+      return (
+        Date.now() - startTime >= constants.WORKFLOW_RUN_NOT_FOUND_GRACE_MS
+      );
+    }
+    case "transient": {
+      return false;
+    }
+  }
+}
+
+/**
+ * The attempt a failed fetch settles on: unrecoverable when no later poll can
+ * succeed, otherwise pending so the next poll retries it.
+ *
+ * The API layer has already logged the failure itself.
+ */
+function failedFetchAttempt(
+  error: unknown,
+  startTime: number,
+  retryMsg: string,
+): PollAttempt<ResultUnrecoverable> {
+  if (isUnrecoverable(error, startTime)) {
+    return {
+      done: true,
+      value: {
+        success: false,
+        reason: "unrecoverable",
+        value: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+
+  core.debug(retryMsg);
+  return POLL_PENDING;
+}
+
 export async function getWorkflowRunResult(
   opts: RunOpts,
 ): Promise<WorkflowRunResult> {
@@ -232,10 +283,12 @@ export async function getWorkflowRunResult(
     let state: WorkflowRunState;
     try {
       state = await fetchWorkflowRunState(opts.runId);
-    } catch {
-      // The API layer has logged the failure, and the next poll is its retry.
-      core.debug(`Failed to fetch run state, attempt ${attemptNo}...`);
-      return POLL_PENDING;
+    } catch (error) {
+      return failedFetchAttempt(
+        error,
+        opts.startTime,
+        `Failed to fetch run state, attempt ${attemptNo}...`,
+      );
     }
 
     return getWorkflowRunStateResult(state.status, state.conclusion, attemptNo);
@@ -342,10 +395,12 @@ export async function getWorkflowRunJobsResult(
         fetchWorkflowRunState(opts.runId),
         fetchWorkflowRunJobStates(opts.runId),
       ]);
-    } catch {
-      // The API layer has logged the failure, and the next poll is its retry.
-      core.debug(`Failed to fetch run state and Jobs, attempt ${attemptNo}...`);
-      return POLL_PENDING;
+    } catch (error) {
+      return failedFetchAttempt(
+        error,
+        opts.startTime,
+        `Failed to fetch run state and Jobs, attempt ${attemptNo}...`,
+      );
     }
 
     const runCompleted = runState.status === WorkflowRunStatus.Completed;

@@ -288,6 +288,26 @@ describe("main", () => {
       assertOnlyCalled(coreInfoLogMock);
     });
 
+    it("should fail when the run or its Jobs cannot be fetched", async () => {
+      awaitRemoteRunGetWorkflowRunJobsResult.mockResolvedValue({
+        success: false,
+        reason: "unrecoverable",
+        value: "Bad credentials",
+      });
+
+      await main();
+
+      // Behaviour
+      expect(awaitRemoteRunHandleActionFail).toHaveBeenCalledOnce();
+      expect(awaitRemoteRunHandleActionFail).toHaveBeenCalledWith(
+        "Unable to fetch Workflow Run 123456, giving up: Bad credentials",
+        jobsCfg.runId,
+      );
+
+      // Logging
+      assertOnlyCalled(coreInfoLogMock);
+    });
+
     it("should fail on a timeout", async () => {
       awaitRemoteRunGetWorkflowRunJobsResult.mockResolvedValue({
         success: false,
@@ -492,6 +512,35 @@ describe("main", () => {
         ID: 123456
         URL: test-url"
     `);
+  });
+
+  it("should fail if the run cannot be fetched", async () => {
+    apiFetchWorkflowRunActiveJobUrlRetry.mockResolvedValue({
+      success: true,
+      value: "test-url",
+    });
+    awaitRemoteRunGetWorkflowRunResult.mockResolvedValue({
+      success: false,
+      reason: "unrecoverable",
+      value: "Not Found",
+    });
+
+    await main();
+
+    // Behaviour
+    expect(awaitRemoteRunGetWorkflowRunResult).toHaveBeenCalledOnce();
+
+    // Result
+    expect(coreSetFailedMock).not.toHaveBeenCalled();
+    expect(awaitRemoteRunHandleActionFail).toHaveBeenCalledOnce();
+    expect(awaitRemoteRunHandleActionFail).toHaveBeenCalledWith(
+      "Unable to fetch Workflow Run 123456, giving up: Not Found",
+      testCfg.runId,
+    );
+
+    // Logging
+    assertOnlyCalled(coreInfoLogMock);
+    expect(coreInfoLogMock).toHaveBeenCalledOnce();
   });
 
   it("should fail if awaiting the run result returns unsupported", async () => {

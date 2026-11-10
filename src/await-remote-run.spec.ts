@@ -20,12 +20,28 @@ import {
   getWorkflowRunStatusResult,
   handleActionFail,
 } from "./await-remote-run.ts";
+import * as constants from "./constants.ts";
 import { mockLoggingFunctions } from "./test-utils/logging.mock.ts";
 import { WorkflowRunConclusion, WorkflowRunStatus } from "./types.ts";
 
 vi.mock("@actions/core");
 vi.mock("@actions/github");
 vi.mock("./api.ts");
+
+// The automock stubs out the request failure classification too. The polling
+// tests need the real one to decide whether a failed fetch ends the poll.
+const actualApi = await vi.importActual<typeof api>("./api.ts");
+
+/**
+ * Octokit identifies a failed request by name rather than by class.
+ */
+function mockHttpError(message: string, status: number): Error {
+  return Object.assign(new Error(message), {
+    name: "HttpError",
+    status: status,
+    response: { headers: {} },
+  });
+}
 
 describe("await-remote-run", () => {
   const {
@@ -562,6 +578,9 @@ describe("await-remote-run", () => {
     beforeEach(() => {
       vi.useFakeTimers();
 
+      vi.spyOn(api, "classifyRequestFailure").mockImplementation(
+        actualApi.classifyRequestFailure,
+      );
       apiFetchWorkflowRunStateMock = vi.spyOn(api, "fetchWorkflowRunState");
       apiRequestWorkflowRunCancelMock = vi.spyOn(
         api,
@@ -1225,6 +1244,32 @@ describe("await-remote-run", () => {
         assertOnlyCalled(coreWarningLogMock);
       });
 
+      it("gives up on a request that cannot succeed", async () => {
+        apiFetchWorkflowRunJobStatesMock.mockRejectedValue(
+          mockHttpError("Bad credentials", 401),
+        );
+
+        // Behaviour
+        const resultPromise = getWorkflowRunJobsResult({
+          startTime: Date.now(),
+          pollIntervalMs: pollIntervalMs,
+          runId: 0,
+          runTimeoutMs: runTimeoutMs,
+          jobs: ["build"],
+        });
+        await vi.advanceTimersByTimeAsync(runTimeoutMs);
+
+        expect(await resultPromise).toStrictEqual({
+          success: false,
+          reason: "unrecoverable",
+          value: "Bad credentials",
+        });
+        expect(apiFetchWorkflowRunJobStatesMock).toHaveBeenCalledOnce();
+
+        // Logging
+        assertNoneCalled();
+      });
+
       it("retries on request failures", async () => {
         apiFetchWorkflowRunStateMock.mockRejectedValueOnce(new Error("boom"));
         apiFetchWorkflowRunJobStatesMock.mockResolvedValue([succeeded]);
@@ -1248,6 +1293,73 @@ describe("await-remote-run", () => {
           `"Failed to fetch run state and Jobs, attempt 1..."`,
         );
       });
+    });
+
+    it("gives up on a request that cannot succeed", async () => {
+      apiFetchWorkflowRunStateMock.mockRejectedValue(
+        mockHttpError("Bad credentials", 401),
+      );
+
+      // Behaviour
+      const getWorkflowRunResultPromise = getWorkflowRunResult({
+        startTime: Date.now(),
+        pollIntervalMs: 100,
+        runId: 0,
+        runTimeoutMs: 10_000,
+      });
+      await vi.advanceTimersByTimeAsync(10_000);
+      const result = await getWorkflowRunResultPromise;
+
+      expect(result).toStrictEqual({
+        success: false,
+        reason: "unrecoverable",
+        value: "Bad credentials",
+      });
+      expect(apiFetchWorkflowRunStateMock).toHaveBeenCalledOnce();
+
+      // Logging
+      assertNoneCalled();
+    });
+
+    it("tolerates a 404 only for the not-found grace period", async () => {
+      const pollIntervalMs = 5000;
+      const graceMs = constants.WORKFLOW_RUN_NOT_FOUND_GRACE_MS;
+      apiFetchWorkflowRunStateMock.mockRejectedValue(
+        mockHttpError("Not Found", 404),
+      );
+
+      // Behaviour
+      const getWorkflowRunResultPromise = getWorkflowRunResult({
+        startTime: Date.now(),
+        pollIntervalMs: pollIntervalMs,
+        runId: 0,
+        runTimeoutMs: graceMs * 10,
+      });
+
+      // Still polling a tick before the grace period elapses.
+      await vi.advanceTimersByTimeAsync(graceMs - pollIntervalMs);
+      expect(apiFetchWorkflowRunStateMock).toHaveBeenCalledTimes(
+        graceMs / pollIntervalMs,
+      );
+
+      await vi.advanceTimersByTimeAsync(pollIntervalMs);
+      const result = await getWorkflowRunResultPromise;
+
+      expect(result).toStrictEqual({
+        success: false,
+        reason: "unrecoverable",
+        value: "Not Found",
+      });
+      expect(apiFetchWorkflowRunStateMock).toHaveBeenCalledTimes(
+        graceMs / pollIntervalMs + 1,
+      );
+
+      // Logging
+      assertOnlyCalled(coreDebugLogMock);
+      expect(coreDebugLogMock).toHaveBeenCalledTimes(graceMs / pollIntervalMs);
+      expect(coreDebugLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
+        `"Failed to fetch run state, attempt 6..."`,
+      );
     });
 
     it("returns a timeout", async () => {

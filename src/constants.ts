@@ -22,6 +22,15 @@ export const WORKFLOW_RUN_ACTIVE_JOB_TIMEOUT_MS: number = 30_000;
 export const WORKFLOW_RUN_ACTIVE_JOB_POLL_INTERVAL_MS: number = 1_000;
 
 /**
+ * How long from the start of polling a 404 for the run is tolerated before it
+ * is taken to mean the run does not exist, or the token cannot see it.
+ *
+ * A run dispatched moments ago, and its Jobs listing in particular, can be
+ * missing briefly. This matches the active job lookup's allowance above.
+ */
+export const WORKFLOW_RUN_NOT_FOUND_GRACE_MS: number = 30_000;
+
+/**
  * How many response bodies to retain for conditional requests.
  *
  * Each Job page is a distinct URL, so this sits well above the pages a run
