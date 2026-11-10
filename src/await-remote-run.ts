@@ -5,8 +5,8 @@ import {
   fetchWorkflowRunJobStates,
   fetchWorkflowRunState,
   requestWorkflowRunCancel,
-  retryOnError,
   type WorkflowRunJobState,
+  type WorkflowRunState,
 } from "./api.ts";
 import {
   POLL_PENDING,
@@ -229,18 +229,16 @@ export async function getWorkflowRunResult(
   opts: RunOpts,
 ): Promise<WorkflowRunResult> {
   const { result } = await pollRun(opts, async (attemptNo) => {
-    const fetchWorkflowRunStateResult = await retryOnError(
-      async () => fetchWorkflowRunState(opts.runId),
-      400,
-      "fetchWorkflowRunState",
-    );
-    if (!fetchWorkflowRunStateResult.success) {
+    let state: WorkflowRunState;
+    try {
+      state = await fetchWorkflowRunState(opts.runId);
+    } catch {
+      // The API layer has logged the failure, and the next poll is its retry.
       core.debug(`Failed to fetch run state, attempt ${attemptNo}...`);
       return POLL_PENDING;
     }
 
-    const { status, conclusion } = fetchWorkflowRunStateResult.value;
-    return getWorkflowRunStateResult(status, conclusion, attemptNo);
+    return getWorkflowRunStateResult(state.status, state.conclusion, attemptNo);
   });
 
   return result;
@@ -337,21 +335,19 @@ export async function getWorkflowRunJobsResult(
   // verdict needs completion to hold for two polls before it is terminal.
   let runCompletedLastPoll = false;
   const { result, cancelRequested } = await pollRun(opts, async (attemptNo) => {
-    const statesResult = await retryOnError(
-      async () =>
-        Promise.all([
-          fetchWorkflowRunState(opts.runId),
-          fetchWorkflowRunJobStates(opts.runId),
-        ]),
-      400,
-      "fetchWorkflowRunState & fetchWorkflowRunJobStates",
-    );
-    if (!statesResult.success) {
+    let runState: WorkflowRunState;
+    let jobs: WorkflowRunJobState[];
+    try {
+      [runState, jobs] = await Promise.all([
+        fetchWorkflowRunState(opts.runId),
+        fetchWorkflowRunJobStates(opts.runId),
+      ]);
+    } catch {
+      // The API layer has logged the failure, and the next poll is its retry.
       core.debug(`Failed to fetch run state and Jobs, attempt ${attemptNo}...`);
       return POLL_PENDING;
     }
 
-    const [runState, jobs] = statesResult.value;
     const runCompleted = runState.status === WorkflowRunStatus.Completed;
     const completionConfirmed = runCompleted && runCompletedLastPoll;
     runCompletedLastPoll = runCompleted;

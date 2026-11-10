@@ -18,7 +18,6 @@ import {
   fetchWorkflowRunState,
   init,
   requestWorkflowRunCancel,
-  retryOnError,
 } from "./api.ts";
 import * as constants from "./constants.ts";
 import { mockLoggingFunctions } from "./test-utils/logging.mock.ts";
@@ -93,7 +92,6 @@ describe("API", () => {
     coreWarningLogMock,
     coreDebugLogMock,
     assertOnlyCalled,
-    assertNoneCalled,
   } = mockLoggingFunctions();
 
   afterAll(() => {
@@ -1135,121 +1133,6 @@ describe("API", () => {
           );
         });
       });
-    });
-  });
-
-  describe("retryOnError", () => {
-    beforeEach(() => {
-      vi.useFakeTimers();
-    });
-
-    afterEach(() => {
-      vi.useRealTimers();
-    });
-
-    it("should return a success result", async () => {
-      const testFunc = vi
-        .fn<() => Promise<string>>()
-        .mockImplementation(() => Promise.resolve("completed"));
-
-      // Behaviour
-      const result = await retryOnError(() => testFunc(), 5000);
-      if (!result.success) {
-        expect.fail();
-      }
-      expect(result.success).toStrictEqual(true);
-      expect(result.value).toStrictEqual("completed");
-
-      // Logging
-      assertNoneCalled();
-    });
-
-    it("should retry a function if it throws an error", async () => {
-      const errorMsg = "some error";
-      const testFunc = vi
-        .fn<() => Promise<string>>()
-        .mockImplementation(() => Promise.resolve("completed"))
-        .mockImplementationOnce(() => Promise.reject(new Error(errorMsg)));
-
-      // Behaviour
-      const retryPromise = retryOnError(testFunc, 5000);
-      // Progress timers to first failure
-      await vi.advanceTimersByTimeAsync(1000);
-
-      // Logging
-      assertOnlyCalled(coreWarningLogMock);
-      expect(coreWarningLogMock).toHaveBeenCalledOnce();
-      expect(coreWarningLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(`
-        "retryOnError: An unexpected error has occurred:
-          name: Mock
-          error: some error"
-      `);
-      expect(coreWarningLogMock.mock.calls[0]?.[0]).toContain(testFunc.name);
-      coreWarningLogMock.mockReset();
-
-      // Behaviour
-      // Progress timers to second success
-      await vi.advanceTimersByTimeAsync(1000);
-      const result = await retryPromise;
-      if (!result.success) {
-        expect.fail();
-      }
-
-      expect(result.success).toStrictEqual(true);
-      expect(result.value).toStrictEqual("completed");
-
-      // Logging
-      assertNoneCalled();
-    });
-
-    it("should display a fallback function name if none is available", async () => {
-      const errorMsg = "some error";
-      const testFunc = vi
-        .fn<() => Promise<string>>()
-        .mockImplementationOnce(() => Promise.reject(new Error(errorMsg)));
-
-      // Behaviour
-      // Use anonymous function
-      const retryPromise = retryOnError(() => testFunc(), 5000);
-      // Progress timers to first failure
-      await vi.advanceTimersByTimeAsync(1000);
-      // Clean up promise
-      await retryPromise;
-
-      // Logging
-      assertOnlyCalled(coreWarningLogMock);
-      expect(coreWarningLogMock).toHaveBeenCalledOnce();
-      expect(coreWarningLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(`
-        "retryOnError: An unexpected error has occurred:
-          name: anonymous function
-          error: some error"
-      `);
-      coreWarningLogMock.mockReset();
-    });
-
-    it("should return a timeout result", async () => {
-      const errorMsg = "some error";
-      const testFunc = vi
-        .fn<() => Promise<string>>()
-        .mockImplementation(async () => {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-          throw new Error(errorMsg);
-        });
-
-      // Behaviour
-      const retryPromise = retryOnError(() => testFunc(), 500);
-      await vi.advanceTimersByTimeAsync(2000);
-      const result = await retryPromise;
-
-      if (result.success) {
-        expect.fail();
-      }
-
-      expect(result.success).toStrictEqual(false);
-      expect(result.reason).toStrictEqual("timeout");
-
-      // Logging
-      assertNoneCalled();
     });
   });
 });

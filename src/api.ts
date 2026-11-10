@@ -35,7 +35,7 @@ export function init(cfg?: ActionConfig): void {
  * Both are passed through verbatim rather than narrowed to the known enums, so
  * a value GitHub adds reaches the interpretation and is reported as itself.
  */
-interface WorkflowRunState {
+export interface WorkflowRunState {
   status: string | null;
   conclusion: string | null;
 }
@@ -469,39 +469,4 @@ export async function fetchWorkflowRunActiveJobUrlRetry(
   core.debug(`Timed out while trying to fetch URL for Workflow Run ${runId}`);
 
   return { success: false, reason: "timeout" };
-}
-
-export async function retryOnError<T>(
-  func: () => Promise<T>,
-  timeoutMs: number,
-  functionName?: string,
-): Promise<Result<T>> {
-  const startTime = Date.now();
-
-  let elapsedTime = 0;
-  while (elapsedTime < timeoutMs) {
-    try {
-      const value = await func();
-      return {
-        success: true,
-        value: value,
-      };
-    } catch (error) {
-      if (error instanceof Error && Date.now() - startTime < timeoutMs) {
-        core.warning(
-          "retryOnError: An unexpected error has occurred:\n" +
-            `  name: ${functionName ?? (func.name || "anonymous function")}\n` +
-            `  error: ${error.message}`,
-        );
-      }
-    }
-
-    await sleep(1000);
-    elapsedTime = Date.now() - startTime;
-  }
-
-  return {
-    success: false,
-    reason: "timeout",
-  };
 }
