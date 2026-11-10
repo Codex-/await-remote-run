@@ -405,9 +405,15 @@ export async function fetchWorkflowRunJobStates(
   }
 }
 
+/**
+ * The URL of the run's first active Job.
+ *
+ * Resolves to `undefined` while the run has no active Job yet, and to `null`
+ * when GitHub returned the Job without a URL, which retrying cannot change.
+ */
 export async function fetchWorkflowRunActiveJobUrl(
   runId: number,
-): Promise<string | undefined> {
+): Promise<string | null | undefined> {
   try {
     const fetchedInProgressJobs = (
       await fetchWorkflowRunJobsFirstPage(runId)
@@ -425,13 +431,7 @@ export async function fetchWorkflowRunActiveJobUrl(
         `  Jobs: [${inProgressJobs.join(", ")}]`,
     );
 
-    if (fetchedInProgressJobs.length <= 0) {
-      return undefined;
-    }
-
-    return (
-      fetchedInProgressJobs[0]?.html_url ?? "GitHub failed to return the URL"
-    );
+    return fetchedInProgressJobs[0]?.html_url;
   } catch (error) {
     if (error instanceof Error && !isTransientJobsLookupError(error)) {
       core.error(
@@ -460,7 +460,13 @@ export async function fetchWorkflowRunActiveJobUrlRetry(
   while (elapsedTime < timeout) {
     try {
       const url = await fetchWorkflowRunActiveJobUrl(runId);
-      if (url) {
+      if (url === null) {
+        core.debug(
+          `Active Job for Workflow Run ${runId} has no URL, giving up on it`,
+        );
+        return { success: false, reason: "unsupported", value: "null" };
+      }
+      if (url !== undefined) {
         return { success: true, value: url };
       }
 

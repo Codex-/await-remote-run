@@ -802,7 +802,7 @@ describe("API", () => {
         );
       });
 
-      it("should return even if GitHub fails to return a URL", async () => {
+      it("should return null if GitHub fails to return a URL", async () => {
         inProgressMockData.jobs[0].html_url = null;
 
         vi.spyOn(
@@ -818,7 +818,7 @@ describe("API", () => {
 
         // Behaviour
         const url = await fetchWorkflowRunActiveJobUrl(123456);
-        expect(url).toStrictEqual("GitHub failed to return the URL");
+        expect(url).toBeNull();
 
         // Logging
         assertOnlyCalled(coreDebugLogMock);
@@ -887,6 +887,37 @@ describe("API", () => {
           );
           expect(coreDebugLogMock.mock.calls[2]?.[0]).toMatchInlineSnapshot(
             `"Timed out while trying to fetch URL for Workflow Run 123456"`,
+          );
+        });
+
+        it("should give up without retrying if the active job has no URL", async () => {
+          inProgressMockData.jobs[0].html_url = null;
+
+          const listJobsSpy = vi
+            .spyOn(mockOctokit.rest.actions, "listJobsForWorkflowRun")
+            .mockReturnValue(
+              Promise.resolve({
+                data: inProgressMockData,
+                status: 200,
+                headers: {},
+              }),
+            );
+
+          // Behaviour
+          const result = await fetchWorkflowRunActiveJobUrlRetry(123456, 5000);
+
+          if (result.success) {
+            expect.fail();
+          }
+
+          expect(result.reason).toStrictEqual("unsupported");
+          expect(listJobsSpy).toHaveBeenCalledOnce();
+
+          // Logging
+          assertOnlyCalled(coreDebugLogMock);
+          expect(coreDebugLogMock).toHaveBeenCalledTimes(2);
+          expect(coreDebugLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
+            `"Active Job for Workflow Run 123456 has no URL, giving up on it"`,
           );
         });
 
