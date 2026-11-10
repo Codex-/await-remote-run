@@ -27,7 +27,6 @@ vi.mock("./await-remote-run.ts");
 describe("main", () => {
   const {
     coreDebugLogMock,
-    coreErrorLogMock,
     coreInfoLogMock,
     coreWarningLogMock,
     assertOnlyCalled,
@@ -289,6 +288,26 @@ describe("main", () => {
       assertOnlyCalled(coreInfoLogMock);
     });
 
+    it("should fail when the run or its Jobs cannot be fetched", async () => {
+      awaitRemoteRunGetWorkflowRunJobsResult.mockResolvedValue({
+        success: false,
+        reason: "unrecoverable",
+        value: "Bad credentials",
+      });
+
+      await main();
+
+      // Behaviour
+      expect(awaitRemoteRunHandleActionFail).toHaveBeenCalledOnce();
+      expect(awaitRemoteRunHandleActionFail).toHaveBeenCalledWith(
+        "Unable to fetch Workflow Run 123456, giving up: Bad credentials",
+        jobsCfg.runId,
+      );
+
+      // Logging
+      assertOnlyCalled(coreInfoLogMock);
+    });
+
     it("should fail on a timeout", async () => {
       awaitRemoteRunGetWorkflowRunJobsResult.mockResolvedValue({
         success: false,
@@ -435,6 +454,30 @@ describe("main", () => {
     `);
   });
 
+  it("should start the run timeout after the active job URL has resolved", async () => {
+    const lookupDurationMs = constants.WORKFLOW_RUN_ACTIVE_JOB_TIMEOUT_MS;
+    const lookupStart = Date.now();
+    apiFetchWorkflowRunActiveJobUrlRetry.mockImplementation(() => {
+      vi.setSystemTime(lookupStart + lookupDurationMs);
+      return Promise.resolve({ success: false, reason: "timeout" });
+    });
+    awaitRemoteRunGetWorkflowRunResult.mockResolvedValue({
+      success: true,
+      value: {
+        status: WorkflowRunStatus.Completed,
+        conclusion: WorkflowRunConclusion.Success,
+      },
+    });
+
+    await main();
+
+    // Behaviour
+    expect(awaitRemoteRunGetWorkflowRunResult).toHaveBeenCalledOnce();
+    expect(awaitRemoteRunGetWorkflowRunResult).toHaveBeenCalledWith(
+      expect.objectContaining({ startTime: lookupStart + lookupDurationMs }),
+    );
+  });
+
   it("should fail if awaiting the run result times out", async () => {
     apiFetchWorkflowRunActiveJobUrlRetry.mockResolvedValue({
       success: true,
@@ -469,6 +512,35 @@ describe("main", () => {
         ID: 123456
         URL: test-url"
     `);
+  });
+
+  it("should fail if the run cannot be fetched", async () => {
+    apiFetchWorkflowRunActiveJobUrlRetry.mockResolvedValue({
+      success: true,
+      value: "test-url",
+    });
+    awaitRemoteRunGetWorkflowRunResult.mockResolvedValue({
+      success: false,
+      reason: "unrecoverable",
+      value: "Not Found",
+    });
+
+    await main();
+
+    // Behaviour
+    expect(awaitRemoteRunGetWorkflowRunResult).toHaveBeenCalledOnce();
+
+    // Result
+    expect(coreSetFailedMock).not.toHaveBeenCalled();
+    expect(awaitRemoteRunHandleActionFail).toHaveBeenCalledOnce();
+    expect(awaitRemoteRunHandleActionFail).toHaveBeenCalledWith(
+      "Unable to fetch Workflow Run 123456, giving up: Not Found",
+      testCfg.runId,
+    );
+
+    // Logging
+    assertOnlyCalled(coreInfoLogMock);
+    expect(coreInfoLogMock).toHaveBeenCalledOnce();
   });
 
   it("should fail if awaiting the run result returns unsupported", async () => {
@@ -570,11 +642,7 @@ describe("main", () => {
     );
 
     // Logging
-    assertOnlyCalled(coreDebugLogMock, coreErrorLogMock);
-    expect(coreErrorLogMock).toHaveBeenCalledOnce();
-    expect(coreErrorLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(
-      `"Failed: An unhandled error has occurred: test error"`,
-    );
+    assertOnlyCalled(coreDebugLogMock);
     expect(coreDebugLogMock).toHaveBeenCalledOnce();
     expect(coreDebugLogMock.mock.calls[0]?.[0]).toStrictEqual(testError.stack);
   });
@@ -602,11 +670,7 @@ describe("main", () => {
     );
 
     // Logging
-    assertOnlyCalled(coreDebugLogMock, coreErrorLogMock);
-    expect(coreErrorLogMock).toHaveBeenCalledOnce();
-    expect(coreErrorLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(
-      `"Failed: An unknown error has occurred: some other error"`,
-    );
+    assertOnlyCalled(coreDebugLogMock);
     expect(coreDebugLogMock).toHaveBeenCalledOnce();
     expect(coreDebugLogMock.mock.calls[0]?.[0]).toStrictEqual(testError);
   });

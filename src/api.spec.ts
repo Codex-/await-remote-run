@@ -11,6 +11,7 @@ import {
 } from "vitest";
 
 import {
+  classifyRequestFailure,
   fetchWorkflowRunActiveJobUrl,
   fetchWorkflowRunActiveJobUrlRetry,
   fetchWorkflowRunFailedJobs,
@@ -18,7 +19,6 @@ import {
   fetchWorkflowRunState,
   init,
   requestWorkflowRunCancel,
-  retryOnError,
 } from "./api.ts";
 import * as constants from "./constants.ts";
 import { mockLoggingFunctions } from "./test-utils/logging.mock.ts";
@@ -93,7 +93,6 @@ describe("API", () => {
     coreWarningLogMock,
     coreDebugLogMock,
     assertOnlyCalled,
-    assertNoneCalled,
   } = mockLoggingFunctions();
 
   afterAll(() => {
@@ -109,6 +108,56 @@ describe("API", () => {
 
   afterEach(() => {
     vi.resetAllMocks();
+  });
+
+  describe("classifyRequestFailure", () => {
+    it.each([
+      {
+        label: "a 401",
+        error: mockHttpError("Bad credentials", 401),
+        expected: "permanent",
+      },
+      {
+        label: "a 403 that is not a rate limit",
+        error: mockHttpError("Forbidden", 403),
+        expected: "permanent",
+      },
+      {
+        label: "a 403 with the rate limit exhausted",
+        error: mockHttpError("Forbidden", 403, {
+          "x-ratelimit-remaining": "0",
+        }),
+        expected: "transient",
+      },
+      {
+        label: "a 403 with retry-after",
+        error: mockHttpError("Forbidden", 403, { "retry-after": "60" }),
+        expected: "transient",
+      },
+      {
+        label: "a 404",
+        error: mockHttpError("Not Found", 404),
+        expected: "not_found",
+      },
+      {
+        label: "a 429",
+        error: mockHttpError("Too Many Requests", 429),
+        expected: "transient",
+      },
+      {
+        label: "a 500",
+        error: mockHttpError("Server Error", 500),
+        expected: "transient",
+      },
+      {
+        label: "an error not from Octokit",
+        error: new Error("socket hang up"),
+        expected: "transient",
+      },
+      { label: "a non-error", error: "boom", expected: "transient" },
+    ])("classifies $label as $expected", ({ error, expected }) => {
+      expect(classifyRequestFailure(error)).toStrictEqual(expected);
+    });
   });
 
   describe("fetchWorkflowRunState", () => {
@@ -140,6 +189,27 @@ describe("API", () => {
           Status: completed
           Conclusion: cancelled"
       `);
+    });
+
+    it("should pass an unrecognised status and conclusion through verbatim", async () => {
+      const mockData = {
+        status: "brand_new_status",
+        conclusion: "brand_new_conclusion",
+      };
+      vi.spyOn(mockOctokit.rest.actions, "getWorkflowRun").mockReturnValue(
+        Promise.resolve({
+          data: mockData,
+          status: 200,
+          headers: {},
+        }),
+      );
+
+      // Behaviour
+      const state = await fetchWorkflowRunState(123456);
+      expect(state).toStrictEqual(mockData);
+
+      // Logging
+      assertOnlyCalled(coreDebugLogMock);
     });
 
     it("should throw if a non-200 status is returned", async () => {
@@ -802,7 +872,7 @@ describe("API", () => {
         );
       });
 
-      it("should return even if GitHub fails to return a URL", async () => {
+      it("should return null if GitHub fails to return a URL", async () => {
         inProgressMockData.jobs[0].html_url = null;
 
         vi.spyOn(
@@ -818,7 +888,7 @@ describe("API", () => {
 
         // Behaviour
         const url = await fetchWorkflowRunActiveJobUrl(123456);
-        expect(url).toStrictEqual("GitHub failed to return the URL");
+        expect(url).toBeNull();
 
         // Logging
         assertOnlyCalled(coreDebugLogMock);
@@ -887,6 +957,37 @@ describe("API", () => {
           );
           expect(coreDebugLogMock.mock.calls[2]?.[0]).toMatchInlineSnapshot(
             `"Timed out while trying to fetch URL for Workflow Run 123456"`,
+          );
+        });
+
+        it("should give up without retrying if the active job has no URL", async () => {
+          inProgressMockData.jobs[0].html_url = null;
+
+          const listJobsSpy = vi
+            .spyOn(mockOctokit.rest.actions, "listJobsForWorkflowRun")
+            .mockReturnValue(
+              Promise.resolve({
+                data: inProgressMockData,
+                status: 200,
+                headers: {},
+              }),
+            );
+
+          // Behaviour
+          const result = await fetchWorkflowRunActiveJobUrlRetry(123456, 5000);
+
+          if (result.success) {
+            expect.fail();
+          }
+
+          expect(result.reason).toStrictEqual("unsupported");
+          expect(listJobsSpy).toHaveBeenCalledOnce();
+
+          // Logging
+          assertOnlyCalled(coreDebugLogMock);
+          expect(coreDebugLogMock).toHaveBeenCalledTimes(2);
+          expect(coreDebugLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
+            `"Active Job for Workflow Run 123456 has no URL, giving up on it"`,
           );
         });
 
@@ -1064,16 +1165,20 @@ describe("API", () => {
           );
         });
 
-        it("should rethrow a failure that retrying cannot resolve", async () => {
-          vi.spyOn(
-            mockOctokit.rest.actions,
-            "listJobsForWorkflowRun",
-          ).mockRejectedValue(mockHttpError("Bad credentials", 401));
+        it("should give up without retrying on a failure that retrying cannot resolve", async () => {
+          const listJobsSpy = vi
+            .spyOn(mockOctokit.rest.actions, "listJobsForWorkflowRun")
+            .mockRejectedValue(mockHttpError("Bad credentials", 401));
 
           // Behaviour
-          await expect(
-            fetchWorkflowRunActiveJobUrlRetry(123456, 5000),
-          ).rejects.toThrow("Bad credentials");
+          const result = await fetchWorkflowRunActiveJobUrlRetry(123456, 5000);
+
+          expect(result).toStrictEqual({
+            success: false,
+            reason: "unrecoverable",
+            value: "Bad credentials",
+          });
+          expect(listJobsSpy).toHaveBeenCalledOnce();
 
           // Logging
           assertOnlyCalled(coreErrorLogMock, coreDebugLogMock);
@@ -1081,123 +1186,11 @@ describe("API", () => {
           expect(coreErrorLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
             `"fetchWorkflowRunActiveJobUrl: An unexpected error has occurred: Bad credentials"`,
           );
+          expect(coreDebugLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
+            `"Giving up on the URL for Workflow Run 123456, the request cannot succeed"`,
+          );
         });
       });
-    });
-  });
-
-  describe("retryOnError", () => {
-    beforeEach(() => {
-      vi.useFakeTimers();
-    });
-
-    afterEach(() => {
-      vi.useRealTimers();
-    });
-
-    it("should return a success result", async () => {
-      const testFunc = vi
-        .fn<() => Promise<string>>()
-        .mockImplementation(() => Promise.resolve("completed"));
-
-      // Behaviour
-      const result = await retryOnError(() => testFunc(), 5000);
-      if (!result.success) {
-        expect.fail();
-      }
-      expect(result.success).toStrictEqual(true);
-      expect(result.value).toStrictEqual("completed");
-
-      // Logging
-      assertNoneCalled();
-    });
-
-    it("should retry a function if it throws an error", async () => {
-      const errorMsg = "some error";
-      const testFunc = vi
-        .fn<() => Promise<string>>()
-        .mockImplementation(() => Promise.resolve("completed"))
-        .mockImplementationOnce(() => Promise.reject(new Error(errorMsg)));
-
-      // Behaviour
-      const retryPromise = retryOnError(testFunc, 5000);
-      // Progress timers to first failure
-      await vi.advanceTimersByTimeAsync(1000);
-
-      // Logging
-      assertOnlyCalled(coreWarningLogMock);
-      expect(coreWarningLogMock).toHaveBeenCalledOnce();
-      expect(coreWarningLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(`
-        "retryOnError: An unexpected error has occurred:
-          name: Mock
-          error: some error"
-      `);
-      expect(coreWarningLogMock.mock.calls[0]?.[0]).toContain(testFunc.name);
-      coreWarningLogMock.mockReset();
-
-      // Behaviour
-      // Progress timers to second success
-      await vi.advanceTimersByTimeAsync(1000);
-      const result = await retryPromise;
-      if (!result.success) {
-        expect.fail();
-      }
-
-      expect(result.success).toStrictEqual(true);
-      expect(result.value).toStrictEqual("completed");
-
-      // Logging
-      assertNoneCalled();
-    });
-
-    it("should display a fallback function name if none is available", async () => {
-      const errorMsg = "some error";
-      const testFunc = vi
-        .fn<() => Promise<string>>()
-        .mockImplementationOnce(() => Promise.reject(new Error(errorMsg)));
-
-      // Behaviour
-      // Use anonymous function
-      const retryPromise = retryOnError(() => testFunc(), 5000);
-      // Progress timers to first failure
-      await vi.advanceTimersByTimeAsync(1000);
-      // Clean up promise
-      await retryPromise;
-
-      // Logging
-      assertOnlyCalled(coreWarningLogMock);
-      expect(coreWarningLogMock).toHaveBeenCalledOnce();
-      expect(coreWarningLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(`
-        "retryOnError: An unexpected error has occurred:
-          name: anonymous function
-          error: some error"
-      `);
-      coreWarningLogMock.mockReset();
-    });
-
-    it("should return a timeout result", async () => {
-      const errorMsg = "some error";
-      const testFunc = vi
-        .fn<() => Promise<string>>()
-        .mockImplementation(async () => {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-          throw new Error(errorMsg);
-        });
-
-      // Behaviour
-      const retryPromise = retryOnError(() => testFunc(), 500);
-      await vi.advanceTimersByTimeAsync(2000);
-      const result = await retryPromise;
-
-      if (result.success) {
-        expect.fail();
-      }
-
-      expect(result.success).toStrictEqual(false);
-      expect(result.reason).toStrictEqual("timeout");
-
-      // Logging
-      assertNoneCalled();
     });
   });
 });

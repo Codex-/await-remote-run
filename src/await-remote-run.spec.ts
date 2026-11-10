@@ -20,12 +20,28 @@ import {
   getWorkflowRunStatusResult,
   handleActionFail,
 } from "./await-remote-run.ts";
+import * as constants from "./constants.ts";
 import { mockLoggingFunctions } from "./test-utils/logging.mock.ts";
 import { WorkflowRunConclusion, WorkflowRunStatus } from "./types.ts";
 
 vi.mock("@actions/core");
 vi.mock("@actions/github");
 vi.mock("./api.ts");
+
+// The automock stubs out the request failure classification too. The polling
+// tests need the real one to decide whether a failed fetch ends the poll.
+const actualApi = await vi.importActual<typeof api>("./api.ts");
+
+/**
+ * Octokit identifies a failed request by name rather than by class.
+ */
+function mockHttpError(message: string, status: number): Error {
+  return Object.assign(new Error(message), {
+    name: "HttpError",
+    status: status,
+    response: { headers: {} },
+  });
+}
 
 describe("await-remote-run", () => {
   const {
@@ -141,10 +157,7 @@ describe("await-remote-run", () => {
 
     it("should return unsupported on an unknown status", () => {
       // Behaviour
-      const result = getWorkflowRunStatusResult(
-        "random_status" as unknown as WorkflowRunStatus,
-        0,
-      );
+      const result = getWorkflowRunStatusResult("random_status", 0);
       if (result.success) {
         expect.fail();
       }
@@ -183,9 +196,7 @@ describe("await-remote-run", () => {
 
     it("should return non-success on an unsupported conclusion", () => {
       // Behaviour
-      const result = getWorkflowRunConclusionResult(
-        "random_conclusion" as unknown as WorkflowRunConclusion,
-      );
+      const result = getWorkflowRunConclusionResult("random_conclusion");
       if (result.success) {
         expect.fail();
       }
@@ -204,7 +215,7 @@ describe("await-remote-run", () => {
       );
     });
 
-    it("should return non-success on timeout conclusion", () => {
+    it("should return non-success on timed_out conclusion", () => {
       // Behaviour
       const result = getWorkflowRunConclusionResult(
         WorkflowRunConclusion.TimedOut,
@@ -213,13 +224,14 @@ describe("await-remote-run", () => {
         expect.fail();
       }
       expect(result.success).toStrictEqual(false);
-      expect(result.reason).toStrictEqual("timed_out");
+      expect(result.reason).toStrictEqual("inconclusive");
+      expect(result.value).toStrictEqual(WorkflowRunConclusion.TimedOut);
 
       // Logging
       assertOnlyCalled(coreErrorLogMock);
       expect(coreErrorLogMock).toHaveBeenCalledOnce();
       expect(coreErrorLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
-        `"Run has timed out"`,
+        `"Run has failed with conclusion: timed_out"`,
       );
     });
 
@@ -438,15 +450,12 @@ describe("await-remote-run", () => {
       await handleActionFail(testMsg, 0);
 
       // Behaviour
-      expect(setFailedSpy).toHaveBeenCalled();
+      expect(setFailedSpy).toHaveBeenCalledOnce();
+      expect(setFailedSpy).toHaveBeenCalledWith("Failed: Test Message");
       expect(setOutputSpy).not.toHaveBeenCalled();
 
       // Logging
-      assertOnlyCalled(coreErrorLogMock);
-      expect(coreErrorLogMock).toHaveBeenCalledOnce();
-      expect(coreErrorLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(
-        `"Failed: Test Message"`,
-      );
+      assertNoneCalled();
     });
 
     it("should fetch and log failed jobs from the remote run", async () => {
@@ -489,12 +498,9 @@ describe("await-remote-run", () => {
 
       // Logging
       assertOnlyCalled(coreErrorLogMock);
-      expect(coreErrorLogMock).toHaveBeenCalledTimes(3);
-      expect(coreErrorLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(
-        `"Failed: Test Message"`,
-      );
+      expect(coreErrorLogMock).toHaveBeenCalledTimes(2);
+      expect(coreErrorLogMock.mock.calls[0]?.[0]).toMatchSnapshot();
       expect(coreErrorLogMock.mock.calls[1]?.[0]).toMatchSnapshot();
-      expect(coreErrorLogMock.mock.calls[2]?.[0]).toMatchSnapshot();
     });
 
     it("should swallow errors from fetching failed jobs", async () => {
@@ -508,15 +514,11 @@ describe("await-remote-run", () => {
       // We want to ensure that the original `setFailed` reason
       // is preserved. Teardown errors shouldn't leak to the caller.
       expect(setFailedSpy).toHaveBeenCalledOnce();
-      expect(setFailedSpy).toHaveBeenCalledWith(testMsg);
+      expect(setFailedSpy).toHaveBeenCalledWith(`Failed: ${testMsg}`);
       expect(setOutputSpy).not.toHaveBeenCalled();
 
       // Logging
-      assertOnlyCalled(coreErrorLogMock, coreWarningLogMock);
-      expect(coreErrorLogMock).toHaveBeenCalledOnce();
-      expect(coreErrorLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(
-        `"Failed: Original Failure"`,
-      );
+      assertOnlyCalled(coreWarningLogMock);
       expect(coreWarningLogMock).toHaveBeenCalledOnce();
       expect(coreWarningLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(
         `"Unable to log failed job details for Workflow Run 42: boom"`,
@@ -560,11 +562,8 @@ describe("await-remote-run", () => {
 
       // Logging
       assertOnlyCalled(coreErrorLogMock);
-      expect(coreErrorLogMock).toHaveBeenCalledTimes(2);
-      expect(coreErrorLogMock.mock.calls[0]?.[0]).toMatchInlineSnapshot(
-        `"Failed: Test Message"`,
-      );
-      expect(coreErrorLogMock.mock.calls[1]?.[0]).toMatchSnapshot();
+      expect(coreErrorLogMock).toHaveBeenCalledOnce();
+      expect(coreErrorLogMock.mock.calls[0]?.[0]).toMatchSnapshot();
     });
   });
 
@@ -572,7 +571,6 @@ describe("await-remote-run", () => {
     let apiFetchWorkflowRunStateMock: MockInstance<
       typeof api.fetchWorkflowRunState
     >;
-    let apiRetryOnErrorMock: MockInstance<typeof api.retryOnError>;
     let apiRequestWorkflowRunCancelMock: MockInstance<
       typeof api.requestWorkflowRunCancel
     >;
@@ -580,8 +578,10 @@ describe("await-remote-run", () => {
     beforeEach(() => {
       vi.useFakeTimers();
 
+      vi.spyOn(api, "classifyRequestFailure").mockImplementation(
+        actualApi.classifyRequestFailure,
+      );
       apiFetchWorkflowRunStateMock = vi.spyOn(api, "fetchWorkflowRunState");
-      apiRetryOnErrorMock = vi.spyOn(api, "retryOnError");
       apiRequestWorkflowRunCancelMock = vi.spyOn(
         api,
         "requestWorkflowRunCancel",
@@ -597,10 +597,6 @@ describe("await-remote-run", () => {
         status: WorkflowRunStatus.Completed,
         conclusion: WorkflowRunConclusion.Success,
       });
-      apiRetryOnErrorMock.mockImplementation(async (toTry) => ({
-        success: true,
-        value: await toTry(),
-      }));
 
       // Behaviour
       const getWorkflowRunResultPromise = getWorkflowRunResult({
@@ -625,17 +621,13 @@ describe("await-remote-run", () => {
 
     it("retries on request failures", async () => {
       const pollIntervalMs = 100;
-      apiFetchWorkflowRunStateMock.mockResolvedValue({
-        status: WorkflowRunStatus.Completed,
-        conclusion: WorkflowRunConclusion.Success,
-      });
-      apiRetryOnErrorMock
-        .mockImplementation(async (toTry) => ({
-          success: true,
-          value: await toTry(),
-        }))
-        .mockResolvedValueOnce({ success: false, reason: "timeout" })
-        .mockResolvedValueOnce({ success: false, reason: "timeout" });
+      apiFetchWorkflowRunStateMock
+        .mockResolvedValue({
+          status: WorkflowRunStatus.Completed,
+          conclusion: WorkflowRunConclusion.Success,
+        })
+        .mockRejectedValueOnce(new Error("boom"))
+        .mockRejectedValueOnce(new Error("boom"));
 
       // Behaviour
       const getWorkflowRunResultPromise = getWorkflowRunResult({
@@ -676,10 +668,6 @@ describe("await-remote-run", () => {
         status: WorkflowRunStatus.Completed,
         conclusion: expectedConclusion,
       });
-      apiRetryOnErrorMock.mockImplementation(async (toTry) => ({
-        success: true,
-        value: await toTry(),
-      }));
 
       // Behaviour
       const getWorkflowRunResultPromise = getWorkflowRunResult({
@@ -704,16 +692,14 @@ describe("await-remote-run", () => {
       expect(coreErrorLogMock.mock.calls).toMatchSnapshot();
     });
 
-    it("returns a failure on timeout conclusion", async () => {
+    // The remote run exceeding its own timeout is a conclusion of that run,
+    // distinct from this action giving up on awaiting it.
+    it("returns the timed_out conclusion of the run", async () => {
       const expectedConclusion = WorkflowRunConclusion.TimedOut;
       apiFetchWorkflowRunStateMock.mockResolvedValue({
         status: WorkflowRunStatus.Completed,
         conclusion: expectedConclusion,
       });
-      apiRetryOnErrorMock.mockImplementation(async (toTry) => ({
-        success: true,
-        value: await toTry(),
-      }));
 
       // Behaviour
       const getWorkflowRunResultPromise = getWorkflowRunResult({
@@ -725,8 +711,11 @@ describe("await-remote-run", () => {
       await expect(getWorkflowRunResultPromise).resolves.not.toThrow();
       const result = await getWorkflowRunResultPromise;
       expect(result).toStrictEqual({
-        success: false,
-        reason: "timeout",
+        success: true,
+        value: {
+          conclusion: expectedConclusion,
+          status: WorkflowRunStatus.Completed,
+        },
       });
 
       // Logging
@@ -739,12 +728,8 @@ describe("await-remote-run", () => {
       const expectedConclusion = "weird";
       apiFetchWorkflowRunStateMock.mockResolvedValue({
         status: WorkflowRunStatus.Completed,
-        conclusion: expectedConclusion as any,
+        conclusion: expectedConclusion,
       });
-      apiRetryOnErrorMock.mockImplementation(async (toTry) => ({
-        success: true,
-        value: await toTry(),
-      }));
 
       // Behaviour
       const getWorkflowRunResultPromise = getWorkflowRunResult({
@@ -772,13 +757,9 @@ describe("await-remote-run", () => {
     it("returns a failure if the status is unsupported", async () => {
       const expectedStatus = "weird";
       apiFetchWorkflowRunStateMock.mockResolvedValue({
-        status: expectedStatus as any,
+        status: expectedStatus,
         conclusion: WorkflowRunConclusion.Failure,
       });
-      apiRetryOnErrorMock.mockImplementation(async (toTry) => ({
-        success: true,
-        value: await toTry(),
-      }));
 
       // Behaviour
       const getWorkflowRunResultPromise = getWorkflowRunResult({
@@ -813,10 +794,6 @@ describe("await-remote-run", () => {
           status: WorkflowRunStatus.InProgress,
           conclusion: null,
         });
-        apiRetryOnErrorMock.mockImplementation(async (toTry) => ({
-          success: true,
-          value: await toTry(),
-        }));
       });
 
       it("requests cancellation once the cancel timeout elapses", async () => {
@@ -865,6 +842,34 @@ describe("await-remote-run", () => {
         expect(coreWarningLogMock).toHaveBeenCalledOnce();
         expect(coreWarningLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
           `"Cancel timeout exceeded (300ms), requesting cancellation of Workflow Run 0"`,
+        );
+      });
+
+      it("requests cancellation on timeout when the cancel timeout fell inside the last poll interval", async () => {
+        apiRequestWorkflowRunCancelMock.mockResolvedValue({ success: true });
+        // No poll lands between the cancel timeout and the run timeout.
+        const lateCancelTimeoutMs = runTimeoutMs - pollIntervalMs / 2;
+
+        // Behaviour
+        const getWorkflowRunResultPromise = getWorkflowRunResult({
+          startTime: Date.now(),
+          pollIntervalMs: pollIntervalMs,
+          runId: 0,
+          runTimeoutMs: runTimeoutMs,
+          cancelTimeoutMs: lateCancelTimeoutMs,
+        });
+        await vi.advanceTimersByTimeAsync(runTimeoutMs);
+        const result = await getWorkflowRunResultPromise;
+
+        expect(result).toStrictEqual({ success: false, reason: "timeout" });
+        expect(apiRequestWorkflowRunCancelMock).toHaveBeenCalledOnce();
+        expect(apiRequestWorkflowRunCancelMock).toHaveBeenCalledWith(0);
+
+        // Logging
+        assertOnlyCalled(coreDebugLogMock, coreWarningLogMock);
+        expect(coreWarningLogMock).toHaveBeenCalledOnce();
+        expect(coreWarningLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
+          `"Cancel timeout exceeded (1000ms), requesting cancellation of Workflow Run 0"`,
         );
       });
 
@@ -937,10 +942,7 @@ describe("await-remote-run", () => {
       });
 
       it("requests cancellation even while the run state cannot be fetched", async () => {
-        apiRetryOnErrorMock.mockResolvedValue({
-          success: false,
-          reason: "timeout",
-        });
+        apiFetchWorkflowRunStateMock.mockRejectedValue(new Error("boom"));
         apiRequestWorkflowRunCancelMock.mockResolvedValue({ success: true });
 
         // Behaviour
@@ -1011,10 +1013,6 @@ describe("await-remote-run", () => {
           api,
           "fetchWorkflowRunJobStates",
         );
-        apiRetryOnErrorMock.mockImplementation(async (toTry) => ({
-          success: true,
-          value: await toTry(),
-        }));
         apiFetchWorkflowRunStateMock.mockResolvedValue({
           status: WorkflowRunStatus.InProgress,
           conclusion: null,
@@ -1180,6 +1178,44 @@ describe("await-remote-run", () => {
         },
       );
 
+      it("does not request cancellation again when the cancel timeout already cancelled the run", async () => {
+        apiFetchWorkflowRunJobStatesMock.mockResolvedValue([
+          { name: "build", status: "in_progress", conclusion: null },
+        ]);
+        apiRequestWorkflowRunCancelMock.mockImplementation(() => {
+          // Mirror the remote run reacting to the cancellation, so the
+          // awaited Job is observed concluding as cancelled.
+          apiFetchWorkflowRunJobStatesMock.mockResolvedValue([
+            { name: "build", status: "completed", conclusion: "cancelled" },
+          ]);
+          return Promise.resolve({ success: true });
+        });
+
+        // Behaviour
+        const resultPromise = getWorkflowRunJobsResult({
+          startTime: Date.now(),
+          pollIntervalMs: pollIntervalMs,
+          runId: 0,
+          runTimeoutMs: runTimeoutMs,
+          cancelTimeoutMs: 300,
+          jobs: ["build"],
+        });
+        await vi.advanceTimersByTimeAsync(runTimeoutMs);
+
+        expect(await resultPromise).toMatchObject({
+          success: false,
+          reason: "inconclusive",
+        });
+        expect(apiRequestWorkflowRunCancelMock).toHaveBeenCalledOnce();
+
+        // Logging
+        assertOnlyCalled(coreErrorLogMock, coreWarningLogMock);
+        expect(coreWarningLogMock).toHaveBeenCalledOnce();
+        expect(coreWarningLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
+          `"Cancel timeout exceeded (300ms), requesting cancellation of Workflow Run 0"`,
+        );
+      });
+
       it("times out while the awaited Job never completes", async () => {
         apiRequestWorkflowRunCancelMock.mockResolvedValue({ success: true });
         apiFetchWorkflowRunJobStatesMock.mockResolvedValue([
@@ -1208,13 +1244,34 @@ describe("await-remote-run", () => {
         assertOnlyCalled(coreWarningLogMock);
       });
 
+      it("gives up on a request that cannot succeed", async () => {
+        apiFetchWorkflowRunJobStatesMock.mockRejectedValue(
+          mockHttpError("Bad credentials", 401),
+        );
+
+        // Behaviour
+        const resultPromise = getWorkflowRunJobsResult({
+          startTime: Date.now(),
+          pollIntervalMs: pollIntervalMs,
+          runId: 0,
+          runTimeoutMs: runTimeoutMs,
+          jobs: ["build"],
+        });
+        await vi.advanceTimersByTimeAsync(runTimeoutMs);
+
+        expect(await resultPromise).toStrictEqual({
+          success: false,
+          reason: "unrecoverable",
+          value: "Bad credentials",
+        });
+        expect(apiFetchWorkflowRunJobStatesMock).toHaveBeenCalledOnce();
+
+        // Logging
+        assertNoneCalled();
+      });
+
       it("retries on request failures", async () => {
-        apiRetryOnErrorMock
-          .mockImplementation(async (toTry) => ({
-            success: true,
-            value: await toTry(),
-          }))
-          .mockResolvedValueOnce({ success: false, reason: "timeout" });
+        apiFetchWorkflowRunStateMock.mockRejectedValueOnce(new Error("boom"));
         apiFetchWorkflowRunJobStatesMock.mockResolvedValue([succeeded]);
 
         // Behaviour
@@ -1238,6 +1295,73 @@ describe("await-remote-run", () => {
       });
     });
 
+    it("gives up on a request that cannot succeed", async () => {
+      apiFetchWorkflowRunStateMock.mockRejectedValue(
+        mockHttpError("Bad credentials", 401),
+      );
+
+      // Behaviour
+      const getWorkflowRunResultPromise = getWorkflowRunResult({
+        startTime: Date.now(),
+        pollIntervalMs: 100,
+        runId: 0,
+        runTimeoutMs: 10_000,
+      });
+      await vi.advanceTimersByTimeAsync(10_000);
+      const result = await getWorkflowRunResultPromise;
+
+      expect(result).toStrictEqual({
+        success: false,
+        reason: "unrecoverable",
+        value: "Bad credentials",
+      });
+      expect(apiFetchWorkflowRunStateMock).toHaveBeenCalledOnce();
+
+      // Logging
+      assertNoneCalled();
+    });
+
+    it("tolerates a 404 only for the not-found grace period", async () => {
+      const pollIntervalMs = 5000;
+      const graceMs = constants.WORKFLOW_RUN_NOT_FOUND_GRACE_MS;
+      apiFetchWorkflowRunStateMock.mockRejectedValue(
+        mockHttpError("Not Found", 404),
+      );
+
+      // Behaviour
+      const getWorkflowRunResultPromise = getWorkflowRunResult({
+        startTime: Date.now(),
+        pollIntervalMs: pollIntervalMs,
+        runId: 0,
+        runTimeoutMs: graceMs * 10,
+      });
+
+      // Still polling a tick before the grace period elapses.
+      await vi.advanceTimersByTimeAsync(graceMs - pollIntervalMs);
+      expect(apiFetchWorkflowRunStateMock).toHaveBeenCalledTimes(
+        graceMs / pollIntervalMs,
+      );
+
+      await vi.advanceTimersByTimeAsync(pollIntervalMs);
+      const result = await getWorkflowRunResultPromise;
+
+      expect(result).toStrictEqual({
+        success: false,
+        reason: "unrecoverable",
+        value: "Not Found",
+      });
+      expect(apiFetchWorkflowRunStateMock).toHaveBeenCalledTimes(
+        graceMs / pollIntervalMs + 1,
+      );
+
+      // Logging
+      assertOnlyCalled(coreDebugLogMock);
+      expect(coreDebugLogMock).toHaveBeenCalledTimes(graceMs / pollIntervalMs);
+      expect(coreDebugLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
+        `"Failed to fetch run state, attempt 6..."`,
+      );
+    });
+
     it("returns a timeout", async () => {
       const pollIntervalMs = 100;
       const runTimeoutMs = 1000;
@@ -1246,10 +1370,6 @@ describe("await-remote-run", () => {
         status: WorkflowRunStatus.InProgress,
         conclusion: null,
       });
-      apiRetryOnErrorMock.mockImplementation(async (toTry) => ({
-        success: true,
-        value: await toTry(),
-      }));
 
       // Behaviour
       const getWorkflowRunResultPromise = getWorkflowRunResult({

@@ -209,11 +209,34 @@ describe("Action", () => {
       assertNoneCalled();
     });
 
-    it("should throw if an invalid number value is provided", () => {
-      mockEnvConfig.run_timeout_seconds = "invalid value";
+    it.each(["invalid value", "1.5", "5s", "1e3"])(
+      "should throw if a number input (%s) is not an integer",
+      (value) => {
+        mockEnvConfig.run_timeout_seconds = value;
+
+        // Behaviour
+        expect(() => getConfig()).toThrow(
+          `Unable to parse run_timeout_seconds: ${value}`,
+        );
+
+        // Logging
+        assertNoneCalled();
+      },
+    );
+
+    it.each([
+      ["run_timeout_seconds", "0"],
+      ["run_timeout_seconds", "-1"],
+      ["poll_interval_ms", "0"],
+      ["poll_interval_ms", "-1"],
+      ["run_id", "0"],
+    ])("should throw if %s (%s) is not positive", (name, value) => {
+      mockEnvConfig[name] = value;
 
       // Behaviour
-      expect(() => getConfig()).toThrow("Unable to parse value: invalid value");
+      expect(() => getConfig()).toThrow(
+        `${name} (${value}) must be a positive number.`,
+      );
 
       // Logging
       assertNoneCalled();

@@ -1,18 +1,21 @@
 import * as core from "@actions/core";
 
 import {
+  classifyRequestFailure,
   fetchWorkflowRunFailedJobs,
   fetchWorkflowRunJobStates,
   fetchWorkflowRunState,
   requestWorkflowRunCancel,
-  retryOnError,
   type WorkflowRunJobState,
+  type WorkflowRunState,
 } from "./api.ts";
+import * as constants from "./constants.ts";
 import {
   POLL_PENDING,
   WorkflowRunConclusion,
   WorkflowRunStatus,
   type PollAttempt,
+  type ResultUnrecoverable,
   type WorkflowRunConclusionResult,
   type WorkflowRunJobsResult,
   type WorkflowRunResult,
@@ -21,7 +24,7 @@ import {
 import { sleep } from "./utils.ts";
 
 export function getWorkflowRunStatusResult(
-  status: WorkflowRunStatus | null,
+  status: string | null,
   attemptNo: number,
 ): WorkflowRunStatusResult {
   switch (status) {
@@ -46,7 +49,7 @@ export function getWorkflowRunStatusResult(
 }
 
 export function getWorkflowRunConclusionResult(
-  conclusion: WorkflowRunConclusion | null,
+  conclusion: string | null,
 ): WorkflowRunConclusionResult {
   switch (conclusion) {
     case WorkflowRunConclusion.Success:
@@ -58,11 +61,9 @@ export function getWorkflowRunConclusionResult(
     case WorkflowRunConclusion.Skipped:
     case WorkflowRunConclusion.Stale:
     case WorkflowRunConclusion.StartupFailure:
+    case WorkflowRunConclusion.TimedOut:
       core.error(`Run has failed with conclusion: ${conclusion}`);
       return { success: false, reason: "inconclusive", value: conclusion };
-    case WorkflowRunConclusion.TimedOut:
-      core.error("Run has timed out");
-      return { success: false, reason: "timed_out", value: conclusion };
     default:
       core.error(
         `Run has failed with unsupported conclusion: ${String(conclusion)}`,
@@ -80,8 +81,7 @@ export async function handleActionFail(
   failureMsg: string,
   runId: number,
 ): Promise<void> {
-  core.error(`Failed: ${failureMsg}`);
-  core.setFailed(failureMsg);
+  core.setFailed(`Failed: ${failureMsg}`);
 
   // Handle and log errors here so teardown errors don't leak to the caller
   // catch and end up overriding the `setFailed` with the wrong error.
@@ -121,8 +121,8 @@ export async function handleActionFail(
  * resolve and is worth polling for again.
  */
 function getWorkflowRunStateResult(
-  status: WorkflowRunStatus | null,
-  conclusion: WorkflowRunConclusion | null,
+  status: string | null,
+  conclusion: string | null,
   attemptNo: number,
 ): PollAttempt<WorkflowRunResult> {
   const statusResult = getWorkflowRunStatusResult(status, attemptNo);
@@ -149,16 +149,6 @@ function getWorkflowRunStateResult(
     };
   }
 
-  if (conclusionResult.reason === "timed_out") {
-    return {
-      done: true,
-      value: {
-        success: false,
-        reason: "timeout",
-      },
-    };
-  }
-
   return {
     done: true,
     value: {
@@ -180,19 +170,37 @@ interface RunOpts {
 /**
  * Poll the run until `attempt` settles on a result or the run timeout elapses,
  * requesting cancellation on the way if one was configured.
+ *
+ * A configured cancellation is guaranteed to have been requested by the time
+ * this returns on timeout, even if no poll fell between the two timeouts.
+ * `cancelRequested` reports whether GitHub has settled such a request, so a
+ * caller giving up on the run for its own reasons need not ask again.
  */
 async function pollRun<T>(
   { startTime, runId, runTimeoutMs, pollIntervalMs, cancelTimeoutMs }: RunOpts,
   attempt: (attemptNo: number) => Promise<PollAttempt<T>>,
-): Promise<T | { success: false; reason: "timeout" }> {
+): Promise<{
+  result: T | { success: false; reason: "timeout" };
+  cancelRequested: boolean;
+}> {
   let attemptNo = 0;
   let cancelRequested = false;
+  // Resolves to whether the request has settled. A failed request may be
+  // transient, so it is left outstanding for the next poll to retry.
+  const requestCancel = async (elapsedTime: number): Promise<boolean> => {
+    core.warning(
+      `Cancel timeout exceeded (${elapsedTime}ms), requesting cancellation of Workflow Run ${runId}`,
+    );
+    const cancelResult = await requestWorkflowRunCancel(runId);
+    return cancelResult.success || cancelResult.reason === "rejected";
+  };
+
   while (Date.now() - startTime < runTimeoutMs) {
     attemptNo++;
 
     const attempted = await attempt(attemptNo);
     if (attempted.done) {
-      return attempted.value;
+      return { result: attempted.value, cancelRequested };
     }
 
     const elapsedTime = Date.now() - startTime;
@@ -201,42 +209,92 @@ async function pollRun<T>(
       !cancelRequested &&
       elapsedTime >= cancelTimeoutMs
     ) {
-      core.warning(
-        `Cancel timeout exceeded (${elapsedTime}ms), requesting cancellation of Workflow Run ${runId}`,
-      );
-      const cancelResult = await requestWorkflowRunCancel(runId);
-      // A failed request may be transient, so leave the request outstanding for
-      // the next poll to retry within the remaining run timeout.
-      cancelRequested =
-        cancelResult.success || cancelResult.reason === "rejected";
+      cancelRequested = await requestCancel(elapsedTime);
     }
 
     await sleep(pollIntervalMs);
   }
 
+  // The cancel timeout can elapse during the final sleep, or a failed request
+  // can still be outstanding. The run is being given up on either way, so
+  // leaving it running would defeat the point of configuring cancellation.
+  if (cancelTimeoutMs !== undefined && !cancelRequested) {
+    cancelRequested = await requestCancel(Date.now() - startTime);
+  }
+
   return {
-    success: false,
-    reason: "timeout",
+    result: { success: false, reason: "timeout" },
+    cancelRequested,
   };
+}
+
+/**
+ * Whether a fetch failure ends polling, as no later poll can succeed.
+ *
+ * A 404 is tolerated for `WORKFLOW_RUN_NOT_FOUND_GRACE_MS` from `startTime`,
+ * as a freshly dispatched run can be missing briefly.
+ */
+function isUnrecoverable(error: unknown, startTime: number): boolean {
+  switch (classifyRequestFailure(error)) {
+    case "permanent": {
+      return true;
+    }
+    case "not_found": {
+      return (
+        Date.now() - startTime >= constants.WORKFLOW_RUN_NOT_FOUND_GRACE_MS
+      );
+    }
+    case "transient": {
+      return false;
+    }
+  }
+}
+
+/**
+ * The attempt a failed fetch settles on: unrecoverable when no later poll can
+ * succeed, otherwise pending so the next poll retries it.
+ *
+ * The API layer has already logged the failure itself.
+ */
+function failedFetchAttempt(
+  error: unknown,
+  startTime: number,
+  retryMsg: string,
+): PollAttempt<ResultUnrecoverable> {
+  if (isUnrecoverable(error, startTime)) {
+    return {
+      done: true,
+      value: {
+        success: false,
+        reason: "unrecoverable",
+        value: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+
+  core.debug(retryMsg);
+  return POLL_PENDING;
 }
 
 export async function getWorkflowRunResult(
   opts: RunOpts,
 ): Promise<WorkflowRunResult> {
-  return pollRun(opts, async (attemptNo) => {
-    const fetchWorkflowRunStateResult = await retryOnError(
-      async () => fetchWorkflowRunState(opts.runId),
-      400,
-      "fetchWorkflowRunState",
-    );
-    if (!fetchWorkflowRunStateResult.success) {
-      core.debug(`Failed to fetch run state, attempt ${attemptNo}...`);
-      return POLL_PENDING;
+  const { result } = await pollRun(opts, async (attemptNo) => {
+    let state: WorkflowRunState;
+    try {
+      state = await fetchWorkflowRunState(opts.runId);
+    } catch (error) {
+      return failedFetchAttempt(
+        error,
+        opts.startTime,
+        `Failed to fetch run state, attempt ${attemptNo}...`,
+      );
     }
 
-    const { status, conclusion } = fetchWorkflowRunStateResult.value;
-    return getWorkflowRunStateResult(status, conclusion, attemptNo);
+    return getWorkflowRunStateResult(state.status, state.conclusion, attemptNo);
   });
+
+  return result;
 }
 
 export type JobsResult = WorkflowRunJobsResult<WorkflowRunJobState>;
@@ -329,22 +387,22 @@ export async function getWorkflowRunJobsResult(
   // The Jobs listing can briefly lag a freshly completed run, so a `missing`
   // verdict needs completion to hold for two polls before it is terminal.
   let runCompletedLastPoll = false;
-  const result = await pollRun(opts, async (attemptNo) => {
-    const statesResult = await retryOnError(
-      async () =>
-        Promise.all([
-          fetchWorkflowRunState(opts.runId),
-          fetchWorkflowRunJobStates(opts.runId),
-        ]),
-      400,
-      "fetchWorkflowRunState & fetchWorkflowRunJobStates",
-    );
-    if (!statesResult.success) {
-      core.debug(`Failed to fetch run state and Jobs, attempt ${attemptNo}...`);
-      return POLL_PENDING;
+  const { result, cancelRequested } = await pollRun(opts, async (attemptNo) => {
+    let runState: WorkflowRunState;
+    let jobs: WorkflowRunJobState[];
+    try {
+      [runState, jobs] = await Promise.all([
+        fetchWorkflowRunState(opts.runId),
+        fetchWorkflowRunJobStates(opts.runId),
+      ]);
+    } catch (error) {
+      return failedFetchAttempt(
+        error,
+        opts.startTime,
+        `Failed to fetch run state and Jobs, attempt ${attemptNo}...`,
+      );
     }
 
-    const [runState, jobs] = statesResult.value;
     const runCompleted = runState.status === WorkflowRunStatus.Completed;
     const completionConfirmed = runCompleted && runCompletedLastPoll;
     runCompletedLastPoll = runCompleted;
@@ -353,11 +411,13 @@ export async function getWorkflowRunJobsResult(
   });
 
   // A failed Job means the run can no longer succeed, so give up on it too
-  // where cancellation was opted into.
+  // where cancellation was opted into. A Job that failed because the cancel
+  // timeout already cancelled the run needs no second request.
   if (
     !result.success &&
     result.reason === "inconclusive" &&
-    opts.cancelTimeoutMs !== undefined
+    opts.cancelTimeoutMs !== undefined &&
+    !cancelRequested
   ) {
     core.warning(
       `Awaited Jobs have concluded unsuccessfully, requesting cancellation of Workflow Run ${opts.runId}`,

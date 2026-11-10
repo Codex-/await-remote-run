@@ -48,6 +48,10 @@ async function handleJobsResult(
       failureMsg = `Run concluded without the awaited Jobs completing: ${result.value.missing.join(", ")}`;
       break;
     }
+    case "unrecoverable": {
+      failureMsg = `Unable to fetch Workflow Run ${runId}, giving up: ${result.value}`;
+      break;
+    }
   }
 
   await handleActionFail(failureMsg, runId);
@@ -55,14 +59,11 @@ async function handleJobsResult(
 
 export async function main(): Promise<void> {
   try {
-    const startTime = Date.now();
-
     const config = getConfig();
     api.init(config);
 
-    // The active job URL is only used for logging, so a lookup that cannot
-    // resolve it within the timeout is warned about and the run is awaited
-    // regardless.
+    // The active job URL is only used for logging, so a lookup that fails for
+    // any reason is warned about and the run is awaited regardless.
     const activeJobUrlResult = await api.fetchWorkflowRunActiveJobUrlRetry(
       config.runId,
       constants.WORKFLOW_RUN_ACTIVE_JOB_TIMEOUT_MS,
@@ -83,6 +84,9 @@ export async function main(): Promise<void> {
         `  URL: ${activeJobUrlResult.success ? activeJobUrlResult.value : runUrl}`,
     );
 
+    // Resolving the active job URL can take up to its own timeout, so the
+    // run timeout only starts counting once polling for the run does.
+    const startTime = Date.now();
     const runOpts = {
       startTime,
       pollIntervalMs: config.pollIntervalMs,
@@ -106,11 +110,22 @@ export async function main(): Promise<void> {
     // Await the result
     const runResult = await getWorkflowRunResult(runOpts);
     if (!runResult.success) {
-      const elapsedTime = Date.now() - startTime;
-      const failureMsg =
-        runResult.reason === "timeout"
-          ? `Timeout exceeded while attempting to await run conclusion (${elapsedTime}ms)`
-          : `An unsupported value was reached: ${runResult.value}`;
+      let failureMsg: string;
+      switch (runResult.reason) {
+        case "timeout": {
+          const elapsedTime = Date.now() - startTime;
+          failureMsg = `Timeout exceeded while attempting to await run conclusion (${elapsedTime}ms)`;
+          break;
+        }
+        case "unsupported": {
+          failureMsg = `An unsupported value was reached: ${runResult.value}`;
+          break;
+        }
+        case "unrecoverable": {
+          failureMsg = `Unable to fetch Workflow Run ${config.runId}, giving up: ${runResult.value}`;
+          break;
+        }
+      }
       await handleActionFail(failureMsg, config.runId);
       return;
     }
@@ -134,12 +149,10 @@ export async function main(): Promise<void> {
     if (error instanceof Error) {
       const failureMsg = `Failed: An unhandled error has occurred: ${error.message}`;
       core.setFailed(failureMsg);
-      core.error(failureMsg);
       core.debug(error.stack ?? "");
     } else {
       const failureMsg = `Failed: An unknown error has occurred: ${String(error)}`;
       core.setFailed(failureMsg);
-      core.error(failureMsg);
       core.debug(String(error));
     }
   }

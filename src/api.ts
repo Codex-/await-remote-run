@@ -7,9 +7,8 @@ import * as constants from "./constants.ts";
 import { withEtagCache } from "./etag/fetch.ts";
 import {
   type Result,
+  type ResultUnrecoverable,
   type WorkflowRunCancelResult,
-  WorkflowRunConclusion,
-  WorkflowRunStatus,
 } from "./types.ts";
 import { sleep } from "./utils.ts";
 
@@ -36,21 +35,13 @@ export function init(cfg?: ActionConfig): void {
   });
 }
 
-const workflowRunStatusSet = new Set(Object.values(WorkflowRunStatus));
-function isWorkflowRunStatus(status: string): status is WorkflowRunStatus {
-  return workflowRunStatusSet.has(status);
-}
-
-const workflowRunConclusionSet = new Set(Object.values(WorkflowRunConclusion));
-function isWorkflowRunConclusion(
-  conclusion: string,
-): conclusion is WorkflowRunConclusion {
-  return workflowRunConclusionSet.has(conclusion);
-}
-
-interface WorkflowRunState {
-  status: WorkflowRunStatus | null;
-  conclusion: WorkflowRunConclusion | null;
+/**
+ * Both are passed through verbatim rather than narrowed to the known enums, so
+ * a value GitHub adds reaches the interpretation and is reported as itself.
+ */
+export interface WorkflowRunState {
+  status: string | null;
+  conclusion: string | null;
 }
 
 export async function fetchWorkflowRunState(
@@ -72,15 +63,8 @@ export async function fetchWorkflowRunState(
       );
     }
 
-    const workflowRunStatus =
-      response.data.status && isWorkflowRunStatus(response.data.status)
-        ? response.data.status
-        : null;
-    const workflowRunConclusion =
-      response.data.conclusion &&
-      isWorkflowRunConclusion(response.data.conclusion)
-        ? response.data.conclusion
-        : null;
+    const workflowRunStatus = response.data.status ?? null;
+    const workflowRunConclusion = response.data.conclusion ?? null;
     core.debug(
       `Fetched Run:\n` +
         `  Repository: ${config.owner}/${config.repo}\n` +
@@ -147,11 +131,44 @@ function isRetryable(error: HttpError): boolean {
  * The Jobs listing lags the run's creation, so a run dispatched moments ago
  * returns a 404 that fixes itself.
  *
- * A token without correct permissions can't will also get a 404, which is
+ * A token without the required permissions also gets a 404, which is
  * indistinguishable, so the caller must limit how long it keeps trying.
  */
 function isTransientJobsLookupError(error: unknown): error is HttpError {
   return isHttpError(error) && (error.status === 404 || isRetryable(error));
+}
+
+export type RequestFailure = "permanent" | "not_found" | "transient";
+
+/**
+ * How a caller that polls should treat a failed request.
+ *
+ * `permanent` is a 401, or a 403 that is not a rate limit: the credentials or
+ * permissions are wrong and no retry can help. `not_found` is a 404, which is a
+ * run that does not exist or that the token cannot see, but a freshly
+ * dispatched run can also 404 briefly, so the caller decides how long to
+ * tolerate it. Everything else is `transient`, including a request that never
+ * reached GitHub.
+ */
+export function classifyRequestFailure(error: unknown): RequestFailure {
+  if (!isHttpError(error)) {
+    return "transient";
+  }
+
+  switch (error.status) {
+    case 401: {
+      return "permanent";
+    }
+    case 403: {
+      return isRateLimited(error) ? "transient" : "permanent";
+    }
+    case 404: {
+      return "not_found";
+    }
+    default: {
+      return "transient";
+    }
+  }
 }
 
 /**
@@ -334,7 +351,7 @@ export async function fetchWorkflowRunFailedJobs(
     core.debug(
       `Fetched Jobs for Run:\n` +
         `  Repository: ${config.owner}/${config.repo}\n` +
-        `  Run ID: ${config.runId}\n` +
+        `  Run ID: ${runId}\n` +
         `  Jobs: [${runJobs.join(", ")}]`,
     );
 
@@ -405,9 +422,15 @@ export async function fetchWorkflowRunJobStates(
   }
 }
 
+/**
+ * The URL of the run's first active Job.
+ *
+ * Resolves to `undefined` while the run has no active Job yet, and to `null`
+ * when GitHub returned the Job without a URL, which retrying cannot change.
+ */
 export async function fetchWorkflowRunActiveJobUrl(
   runId: number,
-): Promise<string | undefined> {
+): Promise<string | null | undefined> {
   try {
     const fetchedInProgressJobs = (
       await fetchWorkflowRunJobsFirstPage(runId)
@@ -421,17 +444,11 @@ export async function fetchWorkflowRunActiveJobUrl(
     core.debug(
       `Fetched Jobs for Run:\n` +
         `  Repository: ${config.owner}/${config.repo}\n` +
-        `  Run ID: ${config.runId}\n` +
+        `  Run ID: ${runId}\n` +
         `  Jobs: [${inProgressJobs.join(", ")}]`,
     );
 
-    if (fetchedInProgressJobs.length <= 0) {
-      return undefined;
-    }
-
-    return (
-      fetchedInProgressJobs[0]?.html_url ?? "GitHub failed to return the URL"
-    );
+    return fetchedInProgressJobs[0]?.html_url;
   } catch (error) {
     if (error instanceof Error && !isTransientJobsLookupError(error)) {
       core.error(
@@ -448,19 +465,27 @@ export async function fetchWorkflowRunActiveJobUrl(
  * `timeout` elapses.
  *
  * A transient lookup failure is treated the same as the run having no active
- * Job yet. Any other failure is rethrown, as retrying cannot resolve it.
+ * Job yet. Any other failure ends the lookup as unrecoverable rather than
+ * throwing, as the URL is only used for logging and the caller's own fetches
+ * will surface the problem.
  */
 export async function fetchWorkflowRunActiveJobUrlRetry(
   runId: number,
   timeout: number,
-): Promise<Result<string>> {
+): Promise<Result<string> | ResultUnrecoverable> {
   const startTime = Date.now();
   let elapsedTime = Date.now() - startTime;
 
   while (elapsedTime < timeout) {
     try {
       const url = await fetchWorkflowRunActiveJobUrl(runId);
-      if (url) {
+      if (url === null) {
+        core.debug(
+          `Active Job for Workflow Run ${runId} has no URL, giving up on it`,
+        );
+        return { success: false, reason: "unsupported", value: "null" };
+      }
+      if (url !== undefined) {
         return { success: true, value: url };
       }
 
@@ -469,7 +494,14 @@ export async function fetchWorkflowRunActiveJobUrlRetry(
       );
     } catch (error) {
       if (!isTransientJobsLookupError(error)) {
-        throw error;
+        core.debug(
+          `Giving up on the URL for Workflow Run ${runId}, the request cannot succeed`,
+        );
+        return {
+          success: false,
+          reason: "unrecoverable",
+          value: error instanceof Error ? error.message : String(error),
+        };
       }
 
       core.debug(
@@ -483,39 +515,4 @@ export async function fetchWorkflowRunActiveJobUrlRetry(
   core.debug(`Timed out while trying to fetch URL for Workflow Run ${runId}`);
 
   return { success: false, reason: "timeout" };
-}
-
-export async function retryOnError<T>(
-  func: () => Promise<T>,
-  timeoutMs: number,
-  functionName?: string,
-): Promise<Result<T>> {
-  const startTime = Date.now();
-
-  let elapsedTime = 0;
-  while (elapsedTime < timeoutMs) {
-    try {
-      const value = await func();
-      return {
-        success: true,
-        value: value,
-      };
-    } catch (error) {
-      if (error instanceof Error && Date.now() - startTime < timeoutMs) {
-        core.warning(
-          "retryOnError: An unexpected error has occurred:\n" +
-            `  name: ${functionName ?? (func.name || "anonymous function")}\n` +
-            `  error: ${error.message}`,
-        );
-      }
-    }
-
-    await sleep(1000);
-    elapsedTime = Date.now() - startTime;
-  }
-
-  return {
-    success: false,
-    reason: "timeout",
-  };
 }

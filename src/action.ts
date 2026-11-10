@@ -44,7 +44,7 @@ export interface ActionConfig {
 
   /**
    * Frequency to poll the action for a status.
-   * @default 2500
+   * @default 5000
    */
   pollIntervalMs: number;
 
@@ -70,37 +70,31 @@ export interface ActionConfig {
 
 export function getConfig(): ActionConfig {
   const runTimeoutSeconds =
-    getNumberFromValue(core.getInput("run_timeout_seconds")) ??
-    RUN_TIMEOUT_SECONDS;
-  const cancelTimeoutSeconds = getNumberFromValue(
-    core.getInput("cancel_timeout_seconds"),
+    getPositiveIntegerInput("run_timeout_seconds") ?? RUN_TIMEOUT_SECONDS;
+  const cancelTimeoutSeconds = getPositiveIntegerInput(
+    "cancel_timeout_seconds",
   );
 
-  if (cancelTimeoutSeconds !== undefined) {
-    if (cancelTimeoutSeconds <= 0) {
-      throw new TypeError(
-        `cancel_timeout_seconds (${cancelTimeoutSeconds}) must be a positive number.`,
-      );
-    }
-
-    // Cancellation is requested from the polling loop, so a cancel timeout at
-    // or beyond the run timeout would never fire.
-    if (cancelTimeoutSeconds >= runTimeoutSeconds) {
-      throw new TypeError(
-        `cancel_timeout_seconds (${cancelTimeoutSeconds}) must be less than run_timeout_seconds (${runTimeoutSeconds}).`,
-      );
-    }
+  // Cancellation is requested from the polling loop, so a cancel timeout at
+  // or beyond the run timeout would never fire.
+  if (
+    cancelTimeoutSeconds !== undefined &&
+    cancelTimeoutSeconds >= runTimeoutSeconds
+  ) {
+    throw new TypeError(
+      `cancel_timeout_seconds (${cancelTimeoutSeconds}) must be less than run_timeout_seconds (${runTimeoutSeconds}).`,
+    );
   }
 
   return {
     token: core.getInput("token", { required: true }),
     repo: core.getInput("repo", { required: true }),
     owner: core.getInput("owner", { required: true }),
-    runId: getRunIdFromValue(core.getInput("run_id")),
+    runId: getRunIdInput(),
     runTimeoutSeconds,
     cancelTimeoutSeconds,
     pollIntervalMs:
-      getNumberFromValue(core.getInput("poll_interval_ms")) ?? POLL_INTERVAL_MS,
+      getPositiveIntegerInput("poll_interval_ms") ?? POLL_INTERVAL_MS,
     jobs: getJobsFromValue(core.getInput("jobs")),
   };
 }
@@ -119,22 +113,33 @@ function getJobsFromValue(value: string): string[] | undefined {
   return jobs.size > 0 ? [...jobs] : undefined;
 }
 
-function getRunIdFromValue(value: string): number {
-  const id = getNumberFromValue(value);
+function getRunIdInput(): number {
+  const id = getPositiveIntegerInput("run_id");
   if (id === undefined) {
     throw new TypeError("Run ID must be provided.");
   }
   return id;
 }
 
-function getNumberFromValue(value: string): number | undefined {
+/**
+ * A positive integer input, or `undefined` when it is unset.
+ *
+ * Parsing is strict rather than `parseInt`, so `1.5` or `5s` is rejected
+ * instead of being silently truncated to `1` or `5`.
+ */
+function getPositiveIntegerInput(name: string): number | undefined {
+  const value = core.getInput(name);
   if (value === "") {
     return undefined;
   }
 
-  const num = Number.parseInt(value);
-  if (Number.isNaN(num)) {
-    throw new TypeError(`Unable to parse value: ${value}`);
+  if (!/^[+-]?\d+$/.test(value)) {
+    throw new TypeError(`Unable to parse ${name}: ${value}`);
+  }
+
+  const num = Number(value);
+  if (num <= 0) {
+    throw new TypeError(`${name} (${num}) must be a positive number.`);
   }
 
   return num;
