@@ -204,7 +204,7 @@ describe("await-remote-run", () => {
       );
     });
 
-    it("should return non-success on timeout conclusion", () => {
+    it("should return non-success on timed_out conclusion", () => {
       // Behaviour
       const result = getWorkflowRunConclusionResult(
         WorkflowRunConclusion.TimedOut,
@@ -213,13 +213,14 @@ describe("await-remote-run", () => {
         expect.fail();
       }
       expect(result.success).toStrictEqual(false);
-      expect(result.reason).toStrictEqual("timed_out");
+      expect(result.reason).toStrictEqual("inconclusive");
+      expect(result.value).toStrictEqual(WorkflowRunConclusion.TimedOut);
 
       // Logging
       assertOnlyCalled(coreErrorLogMock);
       expect(coreErrorLogMock).toHaveBeenCalledOnce();
       expect(coreErrorLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
-        `"Run has timed out"`,
+        `"Run has failed with conclusion: timed_out"`,
       );
     });
 
@@ -691,7 +692,9 @@ describe("await-remote-run", () => {
       expect(coreErrorLogMock.mock.calls).toMatchSnapshot();
     });
 
-    it("returns a failure on timeout conclusion", async () => {
+    // The remote run exceeding its own timeout is a conclusion of that run,
+    // distinct from this action giving up on awaiting it.
+    it("returns the timed_out conclusion of the run", async () => {
       const expectedConclusion = WorkflowRunConclusion.TimedOut;
       apiFetchWorkflowRunStateMock.mockResolvedValue({
         status: WorkflowRunStatus.Completed,
@@ -712,8 +715,11 @@ describe("await-remote-run", () => {
       await expect(getWorkflowRunResultPromise).resolves.not.toThrow();
       const result = await getWorkflowRunResultPromise;
       expect(result).toStrictEqual({
-        success: false,
-        reason: "timeout",
+        success: true,
+        value: {
+          conclusion: expectedConclusion,
+          status: WorkflowRunStatus.Completed,
+        },
       });
 
       // Logging

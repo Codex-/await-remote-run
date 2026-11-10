@@ -43,14 +43,6 @@ exports[`await-remote-run > getWorkflowRunResult > returns a failure on an unsup
 ]
 `;
 
-exports[`await-remote-run > getWorkflowRunResult > returns a failure on timeout conclusion 1`] = `
-[
-  [
-    "Run has timed out",
-  ],
-]
-`;
-
 exports[`await-remote-run > getWorkflowRunResult > returns a timeout 1`] = `
 [
   [
@@ -90,6 +82,14 @@ exports[`await-remote-run > getWorkflowRunResult > returns the conclusion if ava
 [
   [
     "Run has failed with conclusion: skipped",
+  ],
+]
+`;
+
+exports[`await-remote-run > getWorkflowRunResult > returns the timed_out conclusion of the run 1`] = `
+[
+  [
+    "Run has failed with conclusion: timed_out",
   ],
 ]
 `;

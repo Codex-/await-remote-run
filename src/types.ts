@@ -106,17 +106,10 @@ export type WorkflowRunCancelResult =
 export type WorkflowRunConclusionResult =
   | ResultSuccess<WorkflowRunConclusion>
   | ResultConclusionInconclusive
-  | ResultConclusionTimedOut
   | ResultUnsupported;
 
 interface ResultConclusionInconclusive {
   success: false;
   reason: "inconclusive";
-  value: WorkflowRunConclusion;
-}
-
-interface ResultConclusionTimedOut {
-  success: false;
-  reason: "timed_out";
   value: WorkflowRunConclusion;
 }
