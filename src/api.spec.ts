@@ -142,6 +142,27 @@ describe("API", () => {
       `);
     });
 
+    it("should pass an unrecognised status and conclusion through verbatim", async () => {
+      const mockData = {
+        status: "brand_new_status",
+        conclusion: "brand_new_conclusion",
+      };
+      vi.spyOn(mockOctokit.rest.actions, "getWorkflowRun").mockReturnValue(
+        Promise.resolve({
+          data: mockData,
+          status: 200,
+          headers: {},
+        }),
+      );
+
+      // Behaviour
+      const state = await fetchWorkflowRunState(123456);
+      expect(state).toStrictEqual(mockData);
+
+      // Logging
+      assertOnlyCalled(coreDebugLogMock);
+    });
+
     it("should throw if a non-200 status is returned", async () => {
       const errorStatus = 401;
       vi.spyOn(mockOctokit.rest.actions, "getWorkflowRun").mockReturnValue(

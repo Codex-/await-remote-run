@@ -141,10 +141,7 @@ describe("await-remote-run", () => {
 
     it("should return unsupported on an unknown status", () => {
       // Behaviour
-      const result = getWorkflowRunStatusResult(
-        "random_status" as unknown as WorkflowRunStatus,
-        0,
-      );
+      const result = getWorkflowRunStatusResult("random_status", 0);
       if (result.success) {
         expect.fail();
       }
@@ -183,9 +180,7 @@ describe("await-remote-run", () => {
 
     it("should return non-success on an unsupported conclusion", () => {
       // Behaviour
-      const result = getWorkflowRunConclusionResult(
-        "random_conclusion" as unknown as WorkflowRunConclusion,
-      );
+      const result = getWorkflowRunConclusionResult("random_conclusion");
       if (result.success) {
         expect.fail();
       }
@@ -732,7 +727,7 @@ describe("await-remote-run", () => {
       const expectedConclusion = "weird";
       apiFetchWorkflowRunStateMock.mockResolvedValue({
         status: WorkflowRunStatus.Completed,
-        conclusion: expectedConclusion as any,
+        conclusion: expectedConclusion,
       });
       apiRetryOnErrorMock.mockImplementation(async (toTry) => ({
         success: true,
@@ -765,7 +760,7 @@ describe("await-remote-run", () => {
     it("returns a failure if the status is unsupported", async () => {
       const expectedStatus = "weird";
       apiFetchWorkflowRunStateMock.mockResolvedValue({
-        status: expectedStatus as any,
+        status: expectedStatus,
         conclusion: WorkflowRunConclusion.Failure,
       });
       apiRetryOnErrorMock.mockImplementation(async (toTry) => ({

@@ -5,12 +5,7 @@ import { defaults as githubDefaults } from "@actions/github/lib/utils";
 import { type ActionConfig, getConfig } from "./action.ts";
 import * as constants from "./constants.ts";
 import { withEtagCache } from "./etag/fetch.ts";
-import {
-  type Result,
-  type WorkflowRunCancelResult,
-  WorkflowRunConclusion,
-  WorkflowRunStatus,
-} from "./types.ts";
+import { type Result, type WorkflowRunCancelResult } from "./types.ts";
 import { sleep } from "./utils.ts";
 
 type Octokit = ReturnType<(typeof github)["getOctokit"]>;
@@ -36,21 +31,13 @@ export function init(cfg?: ActionConfig): void {
   });
 }
 
-const workflowRunStatusSet = new Set(Object.values(WorkflowRunStatus));
-function isWorkflowRunStatus(status: string): status is WorkflowRunStatus {
-  return workflowRunStatusSet.has(status);
-}
-
-const workflowRunConclusionSet = new Set(Object.values(WorkflowRunConclusion));
-function isWorkflowRunConclusion(
-  conclusion: string,
-): conclusion is WorkflowRunConclusion {
-  return workflowRunConclusionSet.has(conclusion);
-}
-
+/**
+ * Both are passed through verbatim rather than narrowed to the known enums, so
+ * a value GitHub adds reaches the interpretation and is reported as itself.
+ */
 interface WorkflowRunState {
-  status: WorkflowRunStatus | null;
-  conclusion: WorkflowRunConclusion | null;
+  status: string | null;
+  conclusion: string | null;
 }
 
 export async function fetchWorkflowRunState(
@@ -72,15 +59,8 @@ export async function fetchWorkflowRunState(
       );
     }
 
-    const workflowRunStatus =
-      response.data.status && isWorkflowRunStatus(response.data.status)
-        ? response.data.status
-        : null;
-    const workflowRunConclusion =
-      response.data.conclusion &&
-      isWorkflowRunConclusion(response.data.conclusion)
-        ? response.data.conclusion
-        : null;
+    const workflowRunStatus = response.data.status ?? null;
+    const workflowRunConclusion = response.data.conclusion ?? null;
     core.debug(
       `Fetched Run:\n` +
         `  Repository: ${config.owner}/${config.repo}\n` +

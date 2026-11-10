@@ -21,7 +21,7 @@ import {
 import { sleep } from "./utils.ts";
 
 export function getWorkflowRunStatusResult(
-  status: WorkflowRunStatus | null,
+  status: string | null,
   attemptNo: number,
 ): WorkflowRunStatusResult {
   switch (status) {
@@ -46,7 +46,7 @@ export function getWorkflowRunStatusResult(
 }
 
 export function getWorkflowRunConclusionResult(
-  conclusion: WorkflowRunConclusion | null,
+  conclusion: string | null,
 ): WorkflowRunConclusionResult {
   switch (conclusion) {
     case WorkflowRunConclusion.Success:
@@ -118,8 +118,8 @@ export async function handleActionFail(
  * resolve and is worth polling for again.
  */
 function getWorkflowRunStateResult(
-  status: WorkflowRunStatus | null,
-  conclusion: WorkflowRunConclusion | null,
+  status: string | null,
+  conclusion: string | null,
   attemptNo: number,
 ): PollAttempt<WorkflowRunResult> {
   const statusResult = getWorkflowRunStatusResult(status, attemptNo);
