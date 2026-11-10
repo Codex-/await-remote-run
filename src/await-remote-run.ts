@@ -170,11 +170,16 @@ interface RunOpts {
  *
  * A configured cancellation is guaranteed to have been requested by the time
  * this returns on timeout, even if no poll fell between the two timeouts.
+ * `cancelRequested` reports whether GitHub has settled such a request, so a
+ * caller giving up on the run for its own reasons need not ask again.
  */
 async function pollRun<T>(
   { startTime, runId, runTimeoutMs, pollIntervalMs, cancelTimeoutMs }: RunOpts,
   attempt: (attemptNo: number) => Promise<PollAttempt<T>>,
-): Promise<T | { success: false; reason: "timeout" }> {
+): Promise<{
+  result: T | { success: false; reason: "timeout" };
+  cancelRequested: boolean;
+}> {
   let attemptNo = 0;
   let cancelRequested = false;
   // Resolves to whether the request has settled. A failed request may be
@@ -192,7 +197,7 @@ async function pollRun<T>(
 
     const attempted = await attempt(attemptNo);
     if (attempted.done) {
-      return attempted.value;
+      return { result: attempted.value, cancelRequested };
     }
 
     const elapsedTime = Date.now() - startTime;
@@ -211,19 +216,19 @@ async function pollRun<T>(
   // can still be outstanding. The run is being given up on either way, so
   // leaving it running would defeat the point of configuring cancellation.
   if (cancelTimeoutMs !== undefined && !cancelRequested) {
-    await requestCancel(Date.now() - startTime);
+    cancelRequested = await requestCancel(Date.now() - startTime);
   }
 
   return {
-    success: false,
-    reason: "timeout",
+    result: { success: false, reason: "timeout" },
+    cancelRequested,
   };
 }
 
 export async function getWorkflowRunResult(
   opts: RunOpts,
 ): Promise<WorkflowRunResult> {
-  return pollRun(opts, async (attemptNo) => {
+  const { result } = await pollRun(opts, async (attemptNo) => {
     const fetchWorkflowRunStateResult = await retryOnError(
       async () => fetchWorkflowRunState(opts.runId),
       400,
@@ -237,6 +242,8 @@ export async function getWorkflowRunResult(
     const { status, conclusion } = fetchWorkflowRunStateResult.value;
     return getWorkflowRunStateResult(status, conclusion, attemptNo);
   });
+
+  return result;
 }
 
 export type JobsResult = WorkflowRunJobsResult<WorkflowRunJobState>;
@@ -329,7 +336,7 @@ export async function getWorkflowRunJobsResult(
   // The Jobs listing can briefly lag a freshly completed run, so a `missing`
   // verdict needs completion to hold for two polls before it is terminal.
   let runCompletedLastPoll = false;
-  const result = await pollRun(opts, async (attemptNo) => {
+  const { result, cancelRequested } = await pollRun(opts, async (attemptNo) => {
     const statesResult = await retryOnError(
       async () =>
         Promise.all([
@@ -353,11 +360,13 @@ export async function getWorkflowRunJobsResult(
   });
 
   // A failed Job means the run can no longer succeed, so give up on it too
-  // where cancellation was opted into.
+  // where cancellation was opted into. A Job that failed because the cancel
+  // timeout already cancelled the run needs no second request.
   if (
     !result.success &&
     result.reason === "inconclusive" &&
-    opts.cancelTimeoutMs !== undefined
+    opts.cancelTimeoutMs !== undefined &&
+    !cancelRequested
   ) {
     core.warning(
       `Awaited Jobs have concluded unsuccessfully, requesting cancellation of Workflow Run ${opts.runId}`,

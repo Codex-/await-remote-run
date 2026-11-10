@@ -1201,6 +1201,44 @@ describe("await-remote-run", () => {
         },
       );
 
+      it("does not request cancellation again when the cancel timeout already cancelled the run", async () => {
+        apiFetchWorkflowRunJobStatesMock.mockResolvedValue([
+          { name: "build", status: "in_progress", conclusion: null },
+        ]);
+        apiRequestWorkflowRunCancelMock.mockImplementation(() => {
+          // Mirror the remote run reacting to the cancellation, so the
+          // awaited Job is observed concluding as cancelled.
+          apiFetchWorkflowRunJobStatesMock.mockResolvedValue([
+            { name: "build", status: "completed", conclusion: "cancelled" },
+          ]);
+          return Promise.resolve({ success: true });
+        });
+
+        // Behaviour
+        const resultPromise = getWorkflowRunJobsResult({
+          startTime: Date.now(),
+          pollIntervalMs: pollIntervalMs,
+          runId: 0,
+          runTimeoutMs: runTimeoutMs,
+          cancelTimeoutMs: 300,
+          jobs: ["build"],
+        });
+        await vi.advanceTimersByTimeAsync(runTimeoutMs);
+
+        expect(await resultPromise).toMatchObject({
+          success: false,
+          reason: "inconclusive",
+        });
+        expect(apiRequestWorkflowRunCancelMock).toHaveBeenCalledOnce();
+
+        // Logging
+        assertOnlyCalled(coreErrorLogMock, coreWarningLogMock);
+        expect(coreWarningLogMock).toHaveBeenCalledOnce();
+        expect(coreWarningLogMock.mock.lastCall?.[0]).toMatchInlineSnapshot(
+          `"Cancel timeout exceeded (300ms), requesting cancellation of Workflow Run 0"`,
+        );
+      });
+
       it("times out while the awaited Job never completes", async () => {
         apiRequestWorkflowRunCancelMock.mockResolvedValue({ success: true });
         apiFetchWorkflowRunJobStatesMock.mockResolvedValue([
