@@ -44,7 +44,7 @@ export interface ActionConfig {
 
   /**
    * Frequency to poll the action for a status.
-   * @default 2500
+   * @default 5000
    */
   pollIntervalMs: number;
 

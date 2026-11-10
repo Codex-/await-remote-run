@@ -131,7 +131,7 @@ function isRetryable(error: HttpError): boolean {
  * The Jobs listing lags the run's creation, so a run dispatched moments ago
  * returns a 404 that fixes itself.
  *
- * A token without correct permissions can't will also get a 404, which is
+ * A token without the required permissions also gets a 404, which is
  * indistinguishable, so the caller must limit how long it keeps trying.
  */
 function isTransientJobsLookupError(error: unknown): error is HttpError {
